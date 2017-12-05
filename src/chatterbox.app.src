@@ -46,8 +46,9 @@
 
   ]},
 
-  {maintainers, ["Joe DeVivo"]},
+  {pkg_name, ts_chatterbox},
+  {maintainers, ["Joe DeVivo", "Tristan Sloughter"]},
   {licenses, ["MIT"]},
-  {links, [{"Github", "https://github.com/joedevivo/chatterbox"}]}
+  {links, [{"Github", "https://github.com/tsloughter/chatterbox"}]}
  ]}.
 %% vim: set filetype=erlang tabstop=2
