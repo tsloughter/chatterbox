@@ -1023,11 +1023,10 @@ handle_event(_, {send_headers, StreamId, Headers, Opts},
         closed ->
             {keep_state, Conn}
     end;
-handle_event(_, {send_trailers, StreamId, Headers, Opts},
+handle_event(_, {send_trailers, StreamId, Headers, _Opts},
              #connection{
                 encode_context=EncodeContext,
-                streams = Streams,
-                socket = Socket
+                streams = Streams
                }=Conn
             ) ->
     lager:debug("[~p] {send trailers, ~p, ~p}",
