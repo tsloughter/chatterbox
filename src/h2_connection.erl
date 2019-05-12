@@ -193,10 +193,8 @@ init({client, Transport, Host, Port, SSLOptions, Http2Settings, ConnectionSettin
              handshake,
              send_settings(Http2Settings, InitialState),
              4500};
-        {error, econnrefused} ->
-            ignore;
         {error, Reason} ->
-            {stop, Reason}
+            {stop, {shutdown,Reason}}
     end;
 init({client_ssl_upgrade, Host, Port, InitialMessage, SSLOptions, Http2Settings, ConnectionSettings}) ->
     case gen_tcp:connect(Host, Port, [{active, false}]) of
@@ -221,10 +219,8 @@ init({client_ssl_upgrade, Host, Port, InitialMessage, SSLOptions, Http2Settings,
                      handshake,
                      send_settings(Http2Settings, InitialState),
                      4500};
-                {error, econnrefused} ->
-                    ignore;
                 {error, Reason} ->
-                    {stop, Reason}
+                    {stop, {shutdown,Reason}}
             end;
         {error, Reason} ->
             {stop, Reason}
