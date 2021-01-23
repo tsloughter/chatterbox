@@ -1007,7 +1007,7 @@ handle_event(_, {send_trailers, StreamId, Headers, Opts},
     Stream = h2_stream_set:get(StreamId, Streams),
     case h2_stream_set:type(Stream) of
         active ->
-            {FramesToSend, NewContext} =
+            {FramesToSend, _NewContext} =
                 h2_frame_headers:to_frames(h2_stream_set:stream_id(Stream),
                                            Headers,
                                            EncodeContext,
@@ -1027,7 +1027,12 @@ handle_event(_, {send_trailers, StreamId, Headers, Opts},
             send_t(Stream, Headers),
             {keep_state,
              Conn#connection{
-               encode_context=NewContext,
+               %% TODO: updating the hpack encoding is removed while trailers are
+               %% broken. Currently they can be sent in a different order than they
+               %% were encoded. A refactor to have the encoding not happen until
+               %% the sending is actually done is required to allow for the table
+               %% to be updated by trailer encoding.
+               %% encode_context=NewContext,
                send_window_size=NewSWS,
                streams=NewStreams
               }};
