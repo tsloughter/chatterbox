@@ -805,7 +805,7 @@ handle_event(_, {send_frame, Frame},
     Binary = h2_frame:to_binary(Frame),
     socksend(Conn, Binary),
     {keep_state, Conn};
-handle_event(stop, _StateName,
+handle_event(_, stop,
             #connection{}=Conn) ->
     go_away(stop, 0, Conn);
 handle_event({call, From}, streams,
