@@ -70,7 +70,7 @@ exceed_server_connection_receive_window(_Config) ->
     ok.
 
 exceed_server_stream_receive_window(_Config) ->
-    Client = send_n_bytes(65),
+    Client = send_n_bytes(32767),
 
     %% First, pull off the window update frame we got on stream 0,
     [WindowUpdate] = http2c:wait_for_n_frames(Client, 0, 1),

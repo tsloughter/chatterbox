@@ -161,6 +161,7 @@
     update_trailers/2,
     update_data_queue/3,
     decrement_recv_window/2,
+    increment_recv_window/2,
     recv_window_size/1,
     decrement_socket_recv_window/2,
     increment_socket_recv_window/2,
@@ -1167,6 +1168,16 @@ decrement_recv_window(
      };
 decrement_recv_window(_, S) ->
     S.
+
+increment_recv_window(
+  L,
+  #active_stream{recv_window_size=RWS}=Stream
+) ->
+  Stream#active_stream{
+    recv_window_size=RWS+L
+   };
+increment_recv_window(_, S) ->
+  S.
 
 decrement_socket_recv_window(L, #stream_set{atomics = Atomics}) ->
     atomics:sub_get(Atomics, ?RECV_WINDOW_SIZE, L).

@@ -60,6 +60,8 @@ sends_head_request(_Config) ->
 
 sends_headers_containing_trailer_part(_Config) ->
     {ok, Client} = http2c:start_link(),
+
+    CL = integer_to_binary(8 * 2047 * 4),
     RequestHeaders =
         [
          {<<":method">>, <<"POST">>},
@@ -70,7 +72,7 @@ sends_headers_containing_trailer_part(_Config) ->
          {<<"accept-encoding">>, <<"gzip, deflate">>},
          {<<"user-agent">>, <<"chattercli/0.0.1 :D">>},
          {<<"content-type">>, <<"text/plain">>},
-         {<<"content-length">>, <<"4">>},
+         {<<"content-length">>, CL},
          {<<"trailer">>, <<"x-test">>}
         ],
     {ok, {HeadersBin, EC}} = hpack:encode(RequestHeaders, hpack:new_context()),
@@ -83,12 +85,14 @@ sends_headers_containing_trailer_part(_Config) ->
       h2_frame_headers:new(HeadersBin)
      },
 
+    %% Send data len 16376 = 8 * 2047
+    Value = <<"12345678">>,
     Data = {
       #frame_header{
          stream_id=1,
-         length=4
+         length=8*2047
         },
-      h2_frame_data:new(<<"test">>)
+      h2_frame_data:new(binary:copy(Value, 2047))
      },
 
     RequestTrailers =
@@ -104,15 +108,23 @@ sends_headers_containing_trailer_part(_Config) ->
       h2_frame_headers:new(TrailersBin)
      },
 
-    http2c:send_unaltered_frames(Client, [HF, Data, TF]),
+    %% Receive a window update frame and rst_stream frame, send 4 data frame and with total data len 65504
+    http2c:send_unaltered_frames(Client, [HF, Data, Data, Data, Data, TF]),
 
     Resp = http2c:wait_for_n_frames(Client, 1, 3),
     ct:pal("Resp: ~p", [Resp]),
 
     ?assertEqual(3, (length(Resp))),
 
-    [{WUH,_}, {HeaderH, _}, {DataH, _}] = Resp,
+    [{WUH, WUD}, {HeaderH, _}, {DataH, _}] = Resp,
 
+    %% After send 3 data frame with length 8 * 2047, receive a window update frame for refill to initial window size
+    ExpectedWU = {#frame_header{
+                     type=?WINDOW_UPDATE,
+                     length=4,
+                     stream_id=1},
+                   h2_frame_window_update:new(8 * 2047 * 3)},
+    ?assertEqual({WUH, WUD}, ExpectedWU),
     ?assertEqual(?WINDOW_UPDATE, (WUH#frame_header.type)),
     ?assertEqual(?HEADERS, (HeaderH#frame_header.type)),
     ?assertEqual(?DATA, (DataH#frame_header.type)),
@@ -166,11 +178,11 @@ sends_second_headers_with_no_end_stream(_Config) ->
 
     http2c:send_unaltered_frames(Client, [HF, Data, TF]),
 
-    Resp = http2c:wait_for_n_frames(Client, 1, 2),
+    %% Only receive a rst_stream frame
+    Resp = http2c:wait_for_n_frames(Client, 1, 1),
     ct:pal("Resp: ~p", [Resp]),
-    ?assertEqual(2, (length(Resp))),
-    [{WUH, _},{Header, Payload}] = Resp,
-    ?assertEqual(?WINDOW_UPDATE, (WUH#frame_header.type)),
+    ?assertEqual(1, (length(Resp))),
+    [{Header, Payload}] = Resp,
     ?assertEqual(?RST_STREAM, (Header#frame_header.type)),
     ?assertEqual(?PROTOCOL_ERROR, (h2_frame_rst_stream:error_code(Payload))),
     ok.
@@ -369,28 +381,17 @@ test_content_length(DataFrames) ->
      },
     http2c:send_unaltered_frames(Client, [HF|DataFrames]),
 
-    ExpectedFrameCount = 1 + length(DataFrames),
+    ExpectedFrameCount = 1,
 
     Resp = http2c:wait_for_n_frames(Client, 1, ExpectedFrameCount),
     ct:pal("Resp: ~p", [Resp]),
     ?assertEqual(ExpectedFrameCount, (length(Resp))),
 
-    [ErrorFrame|WindowUpdates] = lists:reverse(Resp),
+    [ErrorFrame] = Resp,
     {Header, Payload} = ErrorFrame,
     ?assertEqual(?RST_STREAM, (Header#frame_header.type)),
     ?assertEqual(?PROTOCOL_ERROR, (h2_frame_rst_stream:error_code(Payload))),
 
-    ExpectedWUs = [{#frame_header{
-                       type=?WINDOW_UPDATE,
-                       length=4,
-                       stream_id=1
-                      },
-                    h2_frame_window_update:new(8)
-                   }
-                   || _ <- lists:seq(1,length(DataFrames))],
-
-
-    WindowUpdates = ExpectedWUs,
     ok.
 
 sends_non_integer_content_length(_Context) ->
