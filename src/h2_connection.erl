@@ -556,13 +556,15 @@ route_frame(Event, {H, Payload},
             #connection{pings = Pings}=Conn)
     when H#frame_header.type == ?PING,
          ?IS_FLAG((H#frame_header.flags), ?FLAG_ACK) ->
-    case maps:get(h2_frame_ping:to_binary(Payload), Pings, undefined) of
+
+    BinPing = h2_frame_ping:to_binary(Payload),
+    case maps:get(BinPing, Pings, undefined) of
         undefined ->
             ok;
         {NotifyPid, _} ->
             NotifyPid ! {'PONG', self()}
     end,
-    NextPings = maps:remove(Payload, Pings),
+    NextPings = maps:remove(BinPing, Pings),
     maybe_reply(Event, {next_state, connected, Conn#connection{pings = NextPings}}, ok);
 route_frame(Event, {H=#frame_header{stream_id=0}, _Payload},
             _SelfSettings,
