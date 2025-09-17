@@ -49,7 +49,7 @@
           stream_id = undefined :: stream_id(),
           streams :: h2_stream_set:stream_set(),
           connection = undefined :: undefined | pid(),
-          socket = undefined :: sock:socket(),
+          socket = undefined :: chatterbox_sock:socket(),
           state = idle :: stream_state_name(),
           incoming_frames = queue:new() :: queue:queue(h2_frame:frame()),
           request_headers = [] :: hpack:headers(),
@@ -519,7 +519,7 @@ open(cast, {send_data,
      #stream_state{
         socket=Socket
        }=Stream) ->
-    sock:send(Socket, h2_frame:to_binary(F)),
+    chatterbox_sock:send(Socket, h2_frame:to_binary(F)),
 
     NextState =
         case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
@@ -537,7 +537,7 @@ open(cast, {send_data,
      #stream_state{
         socket=Socket
        }=Stream) ->
-    sock:send(Socket, h2_frame:to_binary(F)),
+    chatterbox_sock:send(Socket, h2_frame:to_binary(F)),
 
     NextState =
         case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
@@ -595,7 +595,7 @@ half_closed_remote(cast,
   #stream_state{
      socket=Socket
     }=Stream) ->
-    case sock:send(Socket, h2_frame:to_binary(F)) of
+    case chatterbox_sock:send(Socket, h2_frame:to_binary(F)) of
         ok ->
             case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
                 true ->
@@ -617,7 +617,7 @@ half_closed_remote(cast,
   #stream_state{
      socket=Socket
     }=Stream) ->
-    case sock:send(Socket, h2_frame:to_binary(F)) of
+    case chatterbox_sock:send(Socket, h2_frame:to_binary(F)) of
         ok ->
             case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
                 true ->
@@ -877,7 +877,7 @@ rst_stream_(ErrorCode,
                       stream_id=StreamId
                      },
                    RstStream}),
-    sock:send(Socket, RstStreamBin),
+    chatterbox_sock:send(Socket, RstStreamBin),
     {next_state,
      closed,
      Stream, 0}.

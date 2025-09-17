@@ -51,12 +51,12 @@ read_binary(_, #frame_header{}=H) ->
     %is
     {error, H#frame_header.stream_id, ?FRAME_SIZE_ERROR, <<>>}.
 
--spec send(sock:socket(),
+-spec send(chatterbox_sock:socket(),
            non_neg_integer(),
            stream_id()) ->
                   ok.
 send(Socket, WindowSizeIncrement, StreamId) ->
-    sock:send(Socket, [
+    chatterbox_sock:send(Socket, [
                        <<4:24,?WINDOW_UPDATE:8,0:8,0:1,StreamId:31>>,
                        <<0:1,WindowSizeIncrement:31>>]).
 
