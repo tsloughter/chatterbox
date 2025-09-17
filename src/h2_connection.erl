@@ -76,7 +76,7 @@
 -record(connection, {
           type = undefined :: client | server | undefined,
           receiver :: pid() | undefined,
-          socket = undefined :: sock:socket(),
+          socket = undefined :: chatterbox_sock:socket(),
           settings_sent = queue:new() :: queue:queue(),
           streams :: h2_stream_set:stream_set(),
           send_all_we_can_timer :: reference() | undefined,
@@ -169,7 +169,7 @@ become(Socket, Http2Settings) ->
 
 -spec become(socket(), settings(), map()) -> no_return().
 become({Transport, Socket}, Http2Settings, ConnectionSettings) ->
-    ok = sock:setopts({Transport, Socket}, [{packet, raw}, binary]),
+    ok = chatterbox_sock:setopts({Transport, Socket}, [{packet, raw}, binary]),
     CallbackMod = maps:get(stream_callback_mod, ConnectionSettings,
                            application:get_env(chatterbox, stream_callback_mod, chatterbox_static_stream)),
     CallbackOpts = maps:get(stream_callback_opts, ConnectionSettings,
@@ -187,7 +187,7 @@ become({Transport, Socket}, Http2Settings, ConnectionSettings) ->
                                   handshake,
                                   NewState);
         {_, closing, _NewState} ->
-            sock:close({Transport, Socket}),
+            chatterbox_sock:close({Transport, Socket}),
             exit(normal)
     end.
 
@@ -200,10 +200,10 @@ init({client, Transport, Host, Port, SSLOptions, Http2Settings, ConnectionSettin
     put('__h2_connection_details', {client, Transport, Host, Port}),
     case Transport:connect(Host, Port, client_options(Transport, SSLOptions, SocketOptions), ConnectTimeout) of
         {ok, Socket} ->
-            ok = sock:setopts({Transport, Socket}, [{packet, raw}, binary, {active, false}]),
+            ok = chatterbox_sock:setopts({Transport, Socket}, [{packet, raw}, binary, {active, false}]),
             case TcpUserTimeout of
                 0 -> ok;
-                _ -> sock:setopts({Transport, Socket}, [{raw,6,18,<<TcpUserTimeout:32/native>>}])
+                _ -> chatterbox_sock:setopts({Transport, Socket}, [{raw,6,18,<<TcpUserTimeout:32/native>>}])
             end,
             Transport:send(Socket, ?PREFACE),
             Flow = application:get_env(chatterbox, client_flow_control, auto),
@@ -321,7 +321,7 @@ actually_send_trailers(Streams, StreamId, Trailers) ->
                                true
                               ),
 
-    sock:send(h2_stream_set:socket(Streams), [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
+    chatterbox_sock:send(h2_stream_set:socket(Streams), [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
 
     h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
     ok.
@@ -353,13 +353,13 @@ send_ping(Streams) ->
     {ok, {inet:ip_address(), inet:port_number()}} | {error, term()}.
 get_peer(Streams) ->
     Socket = h2_stream_set:socket(Streams),
-    sock:peername(Socket).
+    chatterbox_sock:peername(Socket).
 
 -spec get_peercert(h2_stream_set:stream_set()) ->
     {ok, binary()} | {error, term()}.
 get_peercert(Streams) ->
     Socket = h2_stream_set:socket(Streams),
-    sock:peercert(Socket).
+    chatterbox_sock:peercert(Socket).
 
 -spec is_push(h2_stream_set:stream_set()) -> boolean().
 is_push(Streams) ->
@@ -518,7 +518,7 @@ closing(_, _Message,
         #connection{
            socket=Socket
           }=Conn) ->
-    sock:close(Socket),
+    chatterbox_sock:close(Socket),
     {stop, normal, Conn};
 closing(Type, Msg, State) ->
     handle_event(Type, Msg, State).
@@ -727,7 +727,7 @@ handle_event(_, {actually_send_trailers, StreamId, Trailers}, Conn=#connection{s
                                true
                               ),
 
-    sock:send(Socket, [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
+    chatterbox_sock:send(Socket, [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
 
     h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
     {keep_state, Conn};
@@ -1001,7 +1001,7 @@ send_headers_(StreamId, Headers, Opts, Streams) ->
                                        PeerSettings#settings.max_frame_size,
                                        StreamComplete
                                       ),
-            sock:send(Socket, [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
+            chatterbox_sock:send(Socket, [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
             h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
             send_h(Stream, Headers),
             ok;
@@ -1052,7 +1052,7 @@ send_promise_(From, StreamId, Headers, NotifyPid, Conn=#connection{streams=Strea
 
                     %% Send the PP Frame
                     Binary = h2_frame:to_binary(PromiseFrame),
-                    sock:send(h2_stream_set:socket(Streams), Binary),
+                    chatterbox_sock:send(h2_stream_set:socket(Streams), Binary),
 
                     h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
 
@@ -1099,7 +1099,7 @@ go_away(Event, ErrorCode, Reason, Conn) ->
     maybe_reply(Event, {next_state, closing, Conn}, ok).
 
 
--spec go_away_(error_code(), sock:socket(), h2_stream_set:stream_set()) -> ok.
+-spec go_away_(error_code(), chatterbox_sock:socket(), h2_stream_set:stream_set()) -> ok.
 go_away_(ErrorCode, Socket, Streams) ->
     go_away_(ErrorCode, <<>>, Socket, Streams).
 
@@ -1109,7 +1109,7 @@ go_away_(ErrorCode, Reason, Socket, Streams) ->
     GoAwayBin = h2_frame:to_binary({#frame_header{
                                        stream_id=0
                                       }, GoAway}),
-    sock:send(Socket, GoAwayBin),
+    chatterbox_sock:send(Socket, GoAwayBin),
     ok.
 
 maybe_reply({call, From}, {next_state, NewState, NewData}, Msg) ->
@@ -1134,7 +1134,7 @@ rst_stream_(Event, Stream, ErrorCode, Conn) ->
 -spec rst_stream__(
         h2_stream_set:stream(),
         error_code(),
-        sock:socket()
+        chatterbox_sock:socket()
        ) -> ok.
 rst_stream__(Stream, ErrorCode, Sock) ->
     case h2_stream_set:type(Stream) of
@@ -1153,7 +1153,7 @@ rst_stream__(Stream, ErrorCode, Sock) ->
                               stream_id=StreamId
                              },
                            RstStream}),
-            sock:send(Sock, RstStreamBin)
+            chatterbox_sock:send(Sock, RstStreamBin)
     end.
 
 -spec send_settings(settings(), connection()) -> connection().
@@ -1401,7 +1401,7 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                     Connection ! {go_away, ?FRAME_SIZE_ERROR};
                 ?PING when ?NOT_FLAG((Header#frame_header.flags), ?FLAG_ACK) ->
                     Ack = h2_frame_ping:ack(Payload),
-                    sock:send(Socket, h2_frame:to_binary(Ack)),
+                    chatterbox_sock:send(Socket, h2_frame:to_binary(Ack)),
                     receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
                 ?PUSH_PROMISE when Type == server ->
                     go_away_(?PROTOCOL_ERROR, <<"push_promise sent to server">>, Socket, Streams),
@@ -1557,7 +1557,7 @@ start_http2_server(
     case accept_preface(Socket) of
         ok ->
             Flow = application:get_env(chatterbox, server_flow_control, auto),
-            case sock:peername(Socket) of
+            case chatterbox_sock:peername(Socket) of
                 {ok, {Host, Port}} ->
                     put('__h2_connection_details', {server, element(1, Socket), Host, Port});
                 _ ->
@@ -1580,7 +1580,7 @@ start_http2_server(
 %% We're going to iterate through the preface string until we're done
 %% or hit a mismatch
 accept_preface(Socket) ->
-    case sock:recv(Socket, byte_size(?PREFACE), 5000) of
+    case chatterbox_sock:recv(Socket, byte_size(?PREFACE), 5000) of
         {ok, ?PREFACE} ->
             ok;
         _ ->
@@ -1622,7 +1622,7 @@ handle_socket_error(Reason, Conn) ->
 socksend(#connection{
             socket=Socket
            }, Data) ->
-    case sock:send(Socket, Data) of
+    case chatterbox_sock:send(Socket, Data) of
         ok ->
             ok;
         {error, Reason} ->

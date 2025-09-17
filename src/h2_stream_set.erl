@@ -26,7 +26,7 @@
 
      atomics = atomics:new(7, []),
 
-     socket :: sock:socket(),
+     socket :: chatterbox_sock:socket(),
 
      connection :: pid(),
 
@@ -216,7 +216,7 @@
 %% new/1 returns a new stream_set. This is your constructor.
 -spec new(
         client | server,
-        sock:socket(),
+        chatterbox_sock:socket(),
         atom(), list(), boolean()
        ) -> stream_set().
 new(client, Socket, CallbackMod, CallbackOpts, GarbageOnEnd) ->
@@ -1010,7 +1010,7 @@ s_send_what_we_can(MFS, StreamId, StreamFun0, Streams) ->
                                   _ ->
                                       [{send_data, Stream#active_stream.pid, Frames}]
                               end,
-                    %sock:send(Socket, h2_frame:to_binary(Frame)),
+                    %chatterbox_sock:send(Socket, h2_frame:to_binary(Frame)),
 
                     {NewS1, NewActions} =
                     case NewS of

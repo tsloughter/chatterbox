@@ -1,4 +1,4 @@
--module(sock).
+-module(chatterbox_sock).
 
 -type transport() :: gen_tcp | ssl.
 -type socket() :: {gen_tcp, inet:socket()|undefined} | {ssl, ssl:sslsocket()|undefined}.
