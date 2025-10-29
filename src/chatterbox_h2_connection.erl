@@ -489,11 +489,18 @@ connected(info, send_all_we_can, State=#connection{send_all_we_can_timer=undefin
 connected(info, actually_send_all_we_can, State) ->
     %% time to do the thing, but do it in a spawn so we don't block
     %% the connection
-    {_, Ref} = spawn_monitor(fun() ->
+    {_, Ref} = proc_lib:spawn_opt(fun() ->
                           chatterbox_h2_stream_set:send_all_we_can(State#connection.streams)
-                  end),
+                 end,
+                 [monitor]),
     {keep_state, State#connection{send_all_we_can_timer=Ref}};
-connected(info, {'DOWN', Ref, process, _, _}, State=#connection{send_all_we_can_timer=Ref}) ->
+connected(info, {'DOWN', Ref, process, _, Reason}, State=#connection{send_all_we_can_timer=Ref}) ->
+    case Reason of
+        normal -> ok;
+        shutdown -> ok;
+        {shutdown, _} -> ok;
+        _ -> error({send_all_we_can_crashed, Reason})
+    end,
     %% its done, decide if we need to schedule another one
     case State#connection.missed_send_all_we_can of
         true ->
