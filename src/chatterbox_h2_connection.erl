@@ -1253,7 +1253,7 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                             %% Make window size great again if we've used up half our buffer
                                             #settings{
                                                   initial_window_size=IWS
-                                                 } = chatterbox_h2_stream_set:get_peer_settings(Streams),
+                                                 } = chatterbox_h2_stream_set:get_self_settings(Streams),
                                             case {chatterbox_h2_stream_set:decrement_socket_recv_window(L, Streams), IWS div 2} of
                                                 {Rem, Half} when Rem < Half ->
                                                     %% refill the window

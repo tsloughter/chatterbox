@@ -379,7 +379,7 @@ get_peer_settings(StreamSet) ->
     try hd(ets:lookup(StreamSet#stream_set.table, peer_settings)) of
         #connection_settings{settings=locked} ->
             timer:sleep(1),
-            get_self_settings(StreamSet);
+            get_peer_settings(StreamSet);
         #connection_settings{settings=Settings} ->
             Settings
     catch error:badarg ->
