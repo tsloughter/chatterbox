@@ -1287,8 +1287,13 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                                                             Streams)
                                     end,
                                     receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
-                                StreamType ->
-                                    go_away_(?PROTOCOL_ERROR, list_to_binary(io_lib:format("data on ~p stream ~p", [StreamType, Header#frame_header.stream_id])), Socket, Streams),
+                                closed ->
+                                    %% As per RFC-9113 a peer MAY send GO_AWAY when receiving data on a closed stream,
+                                    %% or ignore it. It MUST ignore received data frames for a while after sending RST_STREAM.
+                                    %% The easiest way of doing this is to never send GO_AWAY in this case.
+                                    receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
+                                idle ->
+                                    go_away_(?PROTOCOL_ERROR, list_to_binary(io_lib:format("data on idle stream ~p", [Header#frame_header.stream_id])), Socket, Streams),
                                     Connection ! {go_away, ?PROTOCOL_ERROR}
                             end
                     end;

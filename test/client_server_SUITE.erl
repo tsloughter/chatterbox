@@ -11,7 +11,8 @@ all() ->
      {group, default_handler},
      {group, peer_handler},
      {group, double_body_handler},
-     {group, echo_handler}
+     {group, echo_handler},
+     {group, client}
     ].
 
 groups() -> [{default_handler,  [complex_request,
@@ -21,7 +22,8 @@ groups() -> [{default_handler,  [complex_request,
              {peer_handler, [get_peer_in_handler]},
              {double_body_handler, [send_body_opts]},
              {echo_handler, [echo_body,
-                             large_body]}
+                             large_body]},
+             {client, [extra_data_on_closed_stream]}
             ].
 
 init_per_suite(Config) ->
@@ -42,6 +44,11 @@ init_per_group(peer_handler, Config) ->
     chatterbox_test_buddy:start(NewConfig);
 init_per_group(echo_handler, Config) ->
     NewConfig = [{stream_callback_mod, echo_handler}|Config],
+    chatterbox_test_buddy:start(NewConfig);
+init_per_group(client, Config) ->
+    ProtocolCallbackOpts = [{defer_data_until_rst_stream, true}],
+    NewConfig = [{protocol_callback_opts, ProtocolCallbackOpts},
+                 {protocol_callback_mod, http2s}|Config],
     chatterbox_test_buddy:start(NewConfig);
 init_per_group(_, Config) -> Config.
 
@@ -276,4 +283,43 @@ large_body(_Config) ->
                              end, DataFrames),
     io:format("response: ~p~n", [ResponseData]),
     ?assertEqual(size(Body), iolist_size(ResponseData)),
+    ok.
+
+extra_data_on_closed_stream(_Config) ->
+    {ok, StreamSet} = chatterbox_h2_client:start_link(),
+    RequestHeaders =
+        [
+         {<<":method">>, <<"GET">>},
+         {<<":path">>, <<"/index.html">>},
+         {<<":scheme">>, <<"https">>},
+         {<<":authority">>, <<"localhost:8080">>},
+         {<<"accept">>, <<"*/*">>},
+         {<<"accept-encoding">>, <<"gzip, deflate">>},
+         {<<"user-agent">>, <<"chattercli/0.0.1 :D">>}
+        ],
+    {ok, StreamId} = chatterbox_h2_client:send_request(StreamSet, RequestHeaders, <<"body">>),
+    Stream = chatterbox_h2_stream_set:get(StreamId, StreamSet),
+    Pid = chatterbox_h2_stream_set:stream_pid(Stream),
+    chatterbox_h2_stream:rst_stream(Pid, ?CANCEL),
+    receive
+        {'END_STREAM', StreamId} ->
+            ok
+    after 5000 ->
+            ct:fail(timeout)
+    end,
+    %% Wait for the http2s to receive the rst_stream, upon which it
+    %% should send its deferred data, so that the h2_connection client
+    %% will receive data on a closed stream.  We should still be able
+    %% to send new requests on the connection.
+    %% Chek that the h2_connection is still alive.
+    H2ConnectionPid = chatterbox_h2_stream_set:connection(StreamSet),
+    MRef = monitor(process, H2ConnectionPid),
+    {ok, StreamId2} = chatterbox_h2_client:send_request(StreamSet, RequestHeaders, <<>>),
+    receive
+        {'DOWN', MRef, _, _, Reason} ->
+            error({connection_terminated, Reason});
+        {'END_STREAM', StreamId2} ->
+            {ok, {_ResponseHeaders, _ResponseBody, _Trailers}} =
+                chatterbox_h2_client:get_response(StreamSet, StreamId2)
+    end,
     ok.
