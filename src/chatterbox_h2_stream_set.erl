@@ -317,6 +317,7 @@ new_stream(
                                   StreamId,
                                   StreamSet,
                                   self(),
+                                  NotifyPid,
                                   CBMod,
                                   CBOpts
                                  );
@@ -325,6 +326,7 @@ new_stream(
                                   StreamId,
                                   StreamSet,
                                   StreamSet#stream_set.connection,
+                                  NotifyPid,
                                   CBMod,
                                   CBOpts
                                  )

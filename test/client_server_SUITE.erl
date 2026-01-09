@@ -5,6 +5,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
 -compile([export_all]).
+-compile([nowarn_export_all]).
 
 all() ->
     [
@@ -12,7 +13,8 @@ all() ->
      {group, peer_handler},
      {group, double_body_handler},
      {group, echo_handler},
-     {group, client}
+     {group, client_for_server_with_deferred_response},
+     {group, client_for_server_with_no_end_stream}
     ].
 
 groups() -> [{default_handler,  [complex_request,
@@ -23,7 +25,9 @@ groups() -> [{default_handler,  [complex_request,
              {double_body_handler, [send_body_opts]},
              {echo_handler, [echo_body,
                              large_body]},
-             {client, [extra_data_on_closed_stream]}
+             {client_for_server_with_deferred_response,
+              [extra_data_on_closed_stream]},
+             {client_for_server_with_no_end_stream, [can_monitor_owner]}
             ].
 
 init_per_suite(Config) ->
@@ -45,8 +49,14 @@ init_per_group(peer_handler, Config) ->
 init_per_group(echo_handler, Config) ->
     NewConfig = [{stream_callback_mod, echo_handler}|Config],
     chatterbox_test_buddy:start(NewConfig);
-init_per_group(client, Config) ->
+init_per_group(client_for_server_with_deferred_response, Config) ->
     ProtocolCallbackOpts = [{defer_data_until_rst_stream, true}],
+    NewConfig = [{protocol_callback_opts, ProtocolCallbackOpts},
+                 {protocol_callback_mod, http2s}|Config],
+    chatterbox_test_buddy:start(NewConfig);
+init_per_group(client_for_server_with_no_end_stream, Config) ->
+    application:set_env(chatterbox, cancel_stream_on_down, true),
+    ProtocolCallbackOpts = [{no_end_stream, true}],
     NewConfig = [{protocol_callback_opts, ProtocolCallbackOpts},
                  {protocol_callback_mod, http2s}|Config],
     chatterbox_test_buddy:start(NewConfig);
@@ -56,6 +66,7 @@ init_per_testcase(_, Config) ->
     Config.
 
 end_per_group(_, Config) ->
+    application:set_env(chatterbox, cancel_stream_on_down, false),
     chatterbox_test_buddy:stop(Config),
     ok.
 
@@ -323,3 +334,46 @@ extra_data_on_closed_stream(_Config) ->
                 chatterbox_h2_client:get_response(StreamSet, StreamId2)
     end,
     ok.
+
+can_monitor_owner(_Config) ->
+    ct:timetrap({seconds, 10}),
+    {ok, StreamSet} = chatterbox_h2_client:start_link(),
+    RequestHeaders =
+        [
+         {<<":method">>, <<"GET">>},
+         {<<":path">>, <<"/index.html">>},
+         {<<":scheme">>, <<"https">>},
+         {<<":authority">>, <<"localhost:8080">>},
+         {<<"accept">>, <<"*/*">>},
+         {<<"accept-encoding">>, <<"gzip, deflate">>},
+         {<<"user-agent">>, <<"chattercli/0.0.1 :D">>}
+        ],
+    TestProcess = self(),
+    {Pid, MRef} =
+        proc_lib:spawn_opt(
+          fun() ->
+                  {ok, StreamId} = chatterbox_h2_client:send_request(
+                                     StreamSet, RequestHeaders, <<"body">>),
+                  TestProcess ! {client_stream_id, StreamId},
+                  receive ok_terminate -> ok end
+          end,
+          [monitor]),
+    receive
+        {client_stream_id, StreamId} ->
+            await(fun() -> http2s:is_stream(StreamId) == true end),
+            Pid ! ok_terminate,
+            receive
+                {'DOWN', MRef, _, _, _} ->
+                    await(fun() -> http2s:is_stream(StreamId) == false end)
+            end
+    end,
+    ok.
+
+await(Condition) ->
+    case Condition() of
+        true ->
+            ok;
+        false ->
+            timer:sleep(10),
+            await(Condition)
+    end.
