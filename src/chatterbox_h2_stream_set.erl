@@ -17,6 +17,7 @@
 -define(MY_ACTIVE_COUNT, 5).
 -define(THEIR_ACTIVE_COUNT, 6).
 -define(LAST_SEND_ALL_WE_CAN_STREAM_ID, 7).
+-define(SEND_ROUND_ROBIN_END, 8).
 
 -record(
    stream_set,
@@ -24,13 +25,13 @@
      %% Type determines which streams are mine, and which are theirs
      type :: client | server,
 
-     atomics = atomics:new(7, []),
+     atomics = atomics:new(8, []),
 
      socket :: chatterbox_sock:socket(),
 
      connection :: pid(),
 
-     table = ets:new(?MODULE, [public, {keypos, 2}, {read_concurrency, true}]) :: ets:tab(),
+     table = ets:new(?MODULE, [ordered_set, public, {keypos, 2}, {read_concurrency, true}]) :: ets:tab(),
      %% Streams initiated by this peer
      %% mine :: peer_subset(),
      %% Streams initiated by the other peer
@@ -848,11 +849,10 @@ update_my_max_active(NewMax, Streams) ->
 send_all_we_can(Streams) ->
     PeerSettings = get_peer_settings(Streams),
     MaxFrameSize = PeerSettings#settings.max_frame_size,
-    
-    %% TODO be smarter about where we start off (remember where we last stopped, etc),
-    %% inspect priorities, etc
+
     Last = atomics:get(Streams#stream_set.atomics, ?LAST_SEND_ALL_WE_CAN_STREAM_ID),
-    case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id > Last andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
+    End = atomics:get(Streams#stream_set.atomics, ?SEND_ROUND_ROBIN_END),
+    case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id > Last andalso Id < End andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
         '$end_of_table' ->
             ok;
         Res ->
@@ -864,9 +864,13 @@ send_all_we_can(Streams) ->
 
     case Last == Last2 of
         true ->
-            %% we didn't run out of send window, so now traverse the
-            %% streams we have not inspected yet
-            case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id =< Last andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
+            %% we didn't run out of send window, so now wrap around the round robin and start from 0 again
+            TheirNext = atomics:get(Streams#stream_set.atomics, ?THEIR_NEXT_AVAILABLE_STREAM_ID),
+            MyNext = atomics:get(Streams#stream_set.atomics, ?MY_NEXT_AVAILABLE_STREAM_ID),
+            NewEnd = max(TheirNext, MyNext),
+            atomics:put(Streams#stream_set.atomics, ?SEND_ROUND_ROBIN_END, NewEnd),
+            atomics:put(Streams#stream_set.atomics, ?LAST_SEND_ALL_WE_CAN_STREAM_ID, 0),
+            case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id < NewEnd andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
                 '$end_of_table' ->
                     ok;
                 Res2 ->
