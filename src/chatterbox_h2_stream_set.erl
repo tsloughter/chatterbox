@@ -785,10 +785,14 @@ update_all_recv_windows(0, Streams) ->
     Streams;
 update_all_recv_windows(Delta, Streams) ->
 
-    catch ets:select_replace(Streams#stream_set.table,
+    try ets:select_replace(Streams#stream_set.table,
       ets:fun2ms(fun(S=#active_stream{recv_window_size=Size}) ->
                          S#active_stream{recv_window_size=Size+Delta}
-                 end)),
+                 end))
+    catch
+        _:_ ->
+            ok
+    end,
     Streams.
 
 -spec update_all_send_windows(Delta :: integer(),
@@ -797,10 +801,14 @@ update_all_recv_windows(Delta, Streams) ->
 update_all_send_windows(0, Streams) ->
     Streams;
 update_all_send_windows(Delta, Streams) ->
-    catch ets:select_replace(Streams#stream_set.table,
+    try ets:select_replace(Streams#stream_set.table,
       ets:fun2ms(fun(S=#active_stream{send_window_size=Size}) ->
                          S#active_stream{send_window_size=Size+Delta}
-                 end)),
+                 end))
+    catch
+        _:_ ->
+            ok
+    end,
     Streams.
 
 -spec update_their_max_active(NewMax :: non_neg_integer() | unlimited,
