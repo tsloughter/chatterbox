@@ -1,4 +1,4 @@
--module(h2_stream_set).
+-module(chatterbox_h2_stream_set).
 -include("http2.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 %-compile([export_all]).
@@ -26,7 +26,7 @@
 
      atomics = atomics:new(7, []),
 
-     socket :: sock:socket(),
+     socket :: chatterbox_sock:socket(),
 
      connection :: pid(),
 
@@ -101,7 +101,7 @@
      queued_data           :: undefined | done | binary(),
      % Has the body been completely recieved.
      body_complete = false :: boolean(),
-     trailers = undefined  :: [h2_frame:frame()] | undefined
+     trailers = undefined  :: [chatterbox_h2_frame:frame()] | undefined
     }).
 -type active_stream() :: #active_stream{}.
 
@@ -216,7 +216,7 @@
 %% new/1 returns a new stream_set. This is your constructor.
 -spec new(
         client | server,
-        sock:socket(),
+        chatterbox_sock:socket(),
         atom(), list(), boolean()
        ) -> stream_set().
 new(client, Socket, CallbackMod, CallbackOpts, GarbageOnEnd) ->
@@ -312,7 +312,7 @@ new_stream(
         false ->
             {ok, Pid} = case self() == StreamSet#stream_set.connection of
                             true ->
-                                h2_stream:start_link(
+                                chatterbox_h2_stream:start_link(
                                   StreamId,
                                   StreamSet,
                                   self(),
@@ -320,7 +320,7 @@ new_stream(
                                   CBOpts
                                  );
                             false ->
-                                h2_stream:start(
+                                chatterbox_h2_stream:start(
                                   StreamId,
                                   StreamSet,
                                   StreamSet#stream_set.connection,
@@ -347,7 +347,7 @@ new_stream(
 
                     %% If this did happen, we need to kill this
                     %% process, or it will just hang out there.
-                    h2_stream:stop(Pid),
+                    chatterbox_h2_stream:stop(Pid),
                     {error, ?REFUSED_STREAM, #closed_stream{id=StreamId}};
                 ok ->
                     {Pid, StreamId, StreamSet}
@@ -1003,14 +1003,14 @@ s_send_what_we_can(MFS, StreamId, StreamFun0, Streams) ->
                     end,
 
 
-                    %h2_stream:send_data(Stream#active_stream.pid, Frame),
+                    %chatterbox_h2_stream:send_data(Stream#active_stream.pid, Frame),
                     Actions = case Frames of
                                   [] ->
                                       [];
                                   _ ->
                                       [{send_data, Stream#active_stream.pid, Frames}]
                               end,
-                    %sock:send(Socket, h2_frame:to_binary(Frame)),
+                    %chatterbox_sock:send(Socket, chatterbox_h2_frame:to_binary(Frame)),
 
                     {NewS1, NewActions} =
                     case NewS of
@@ -1051,10 +1051,10 @@ s_send_what_we_can(MFS, StreamId, StreamFun0, Streams) ->
 apply_stream_actions([]) ->
     ok;
 apply_stream_actions([{send_data, Pid, Frames}|Tail]) ->
-    [ h2_stream:send_data(Pid, Frame) || Frame <- Frames ],
+    [ chatterbox_h2_stream:send_data(Pid, Frame) || Frame <- Frames ],
     apply_stream_actions(Tail);
 apply_stream_actions([{send_trailers, Pid, Trailers}]) ->
-    h2_stream:send_trailers(Pid, Trailers).
+    chatterbox_h2_stream:send_trailers(Pid, Trailers).
 
 chunk_to_frames(Bin, MaxFrameSize, StreamId, EndStream, Acc) when byte_size(Bin) > MaxFrameSize ->
     <<BinToSend:MaxFrameSize/binary, Rest/binary>> = Bin,
@@ -1064,7 +1064,7 @@ chunk_to_frames(Bin, MaxFrameSize, StreamId, EndStream, Acc) when byte_size(Bin)
                          type=?DATA,
                          length=MaxFrameSize
                         },
-                      h2_frame_data:new(BinToSend)}|Acc]);
+                      chatterbox_h2_frame_data:new(BinToSend)}|Acc]);
 chunk_to_frames(BinToSend, _MaxFrameSize, StreamId, EndStream, Acc) ->
     lists:reverse([{#frame_header{
                        stream_id=StreamId,
@@ -1075,7 +1075,7 @@ chunk_to_frames(BinToSend, _MaxFrameSize, StreamId, EndStream, Acc) ->
                               end,
                        length=byte_size(BinToSend)
                       },
-                    h2_frame_data:new(BinToSend)}|Acc]).
+                    chatterbox_h2_frame_data:new(BinToSend)}|Acc]).
 
 %% Record Accessors
 -spec stream_id(

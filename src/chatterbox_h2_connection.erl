@@ -1,4 +1,4 @@
--module(h2_connection).
+-module(chatterbox_h2_connection).
 -include("http2.hrl").
 -behaviour(gen_statem).
 
@@ -76,9 +76,9 @@
 -record(connection, {
           type = undefined :: client | server | undefined,
           receiver :: pid() | undefined,
-          socket = undefined :: sock:socket(),
+          socket = undefined :: chatterbox_sock:socket(),
           settings_sent = queue:new() :: queue:queue(),
-          streams :: h2_stream_set:stream_set(),
+          streams :: chatterbox_h2_stream_set:stream_set(),
           send_all_we_can_timer :: reference() | undefined,
           missed_send_all_we_can = false :: boolean(),
           pings = #{} :: #{binary() => {pid(), non_neg_integer()}}
@@ -169,7 +169,7 @@ become(Socket, Http2Settings) ->
 
 -spec become(socket(), settings(), map()) -> no_return().
 become({Transport, Socket}, Http2Settings, ConnectionSettings) ->
-    ok = sock:setopts({Transport, Socket}, [{packet, raw}, binary]),
+    ok = chatterbox_sock:setopts({Transport, Socket}, [{packet, raw}, binary]),
     CallbackMod = maps:get(stream_callback_mod, ConnectionSettings,
                            application:get_env(chatterbox, stream_callback_mod, chatterbox_static_stream)),
     CallbackOpts = maps:get(stream_callback_opts, ConnectionSettings,
@@ -178,7 +178,7 @@ become({Transport, Socket}, Http2Settings, ConnectionSettings) ->
 
     case start_http2_server(Http2Settings,
                            #connection{
-                              streams = h2_stream_set:new(server, {Transport, Socket}, CallbackMod, CallbackOpts, GarbageOnEnd),
+                              streams = chatterbox_h2_stream_set:new(server, {Transport, Socket}, CallbackMod, CallbackOpts, GarbageOnEnd),
                               socket = {Transport, Socket}
                              }) of
         {_, handshake, NewState} ->
@@ -187,7 +187,7 @@ become({Transport, Socket}, Http2Settings, ConnectionSettings) ->
                                   handshake,
                                   NewState);
         {_, closing, _NewState} ->
-            sock:close({Transport, Socket}),
+            chatterbox_sock:close({Transport, Socket}),
             exit(normal)
     end.
 
@@ -200,16 +200,16 @@ init({client, Transport, Host, Port, SSLOptions, Http2Settings, ConnectionSettin
     put('__h2_connection_details', {client, Transport, Host, Port}),
     case Transport:connect(Host, Port, client_options(Transport, SSLOptions, SocketOptions), ConnectTimeout) of
         {ok, Socket} ->
-            ok = sock:setopts({Transport, Socket}, [{packet, raw}, binary, {active, false}]),
+            ok = chatterbox_sock:setopts({Transport, Socket}, [{packet, raw}, binary, {active, false}]),
             case TcpUserTimeout of
                 0 -> ok;
-                _ -> sock:setopts({Transport, Socket}, [{raw,6,18,<<TcpUserTimeout:32/native>>}])
+                _ -> chatterbox_sock:setopts({Transport, Socket}, [{raw,6,18,<<TcpUserTimeout:32/native>>}])
             end,
             Transport:send(Socket, ?PREFACE),
             Flow = application:get_env(chatterbox, client_flow_control, auto),
             CallbackMod = maps:get(stream_callback_mod, ConnectionSettings, undefined),
             CallbackOpts = maps:get(stream_callback_opts, ConnectionSettings, []),
-            Streams = h2_stream_set:new(client, {Transport, Socket}, CallbackMod, CallbackOpts, GarbageOnEnd),
+            Streams = chatterbox_h2_stream_set:new(client, {Transport, Socket}, CallbackMod, CallbackOpts, GarbageOnEnd),
             Receiver = spawn_data_receiver({Transport, Socket}, Streams, Flow),
             InitialState =
                 #connection{
@@ -239,7 +239,7 @@ init({client_ssl_upgrade, Host, Port, InitialMessage, SSLOptions, Http2Settings,
                     ssl:send(Socket, ?PREFACE),
                     CallbackMod = maps:get(stream_callback_mod, ConnectionSettings, undefined),
                     CallbackOpts = maps:get(stream_callback_opts, ConnectionSettings, []),
-                    Streams = h2_stream_set:new(client, {ssl, Socket}, CallbackMod, CallbackOpts, GarbageOnEnd),
+                    Streams = chatterbox_h2_stream_set:new(client, {ssl, Socket}, CallbackMod, CallbackOpts, GarbageOnEnd),
                     Flow = application:get_env(chatterbox, client_flow_control, auto),
                     Receiver = spawn_data_receiver({ssl, Socket}, Streams, Flow),
                     InitialState =
@@ -288,124 +288,124 @@ send_frame(Pid, Bin)
 send_frame(Pid, Frame) ->
     gen_statem:cast(Pid, {send_frame, Frame}).
 
--spec send_headers(h2_stream_set:stream_set(), stream_id(), hpack:headers()) -> ok.
+-spec send_headers(chatterbox_h2_stream_set:stream_set(), stream_id(), hpack:headers()) -> ok.
 send_headers(Pid, StreamId, Headers) ->
     send_headers_(StreamId, Headers, [], Pid).
 
--spec send_headers(h2_stream_set:stream_set(), stream_id(), hpack:headers(), send_opts()) -> ok.
+-spec send_headers(chatterbox_h2_stream_set:stream_set(), stream_id(), hpack:headers(), send_opts()) -> ok.
 send_headers(Pid, StreamId, Headers, Opts) ->
     send_headers_(StreamId, Headers, Opts, Pid).
 
--spec rst_stream(h2_stream_set:stream_set(), stream_id(), error_code()) -> ok.
+-spec rst_stream(chatterbox_h2_stream_set:stream_set(), stream_id(), error_code()) -> ok.
 rst_stream(Streams, StreamId, ErrorCode) ->
-    Stream = h2_stream_set:get(StreamId, Streams),
-    rst_stream__(Stream, ErrorCode, h2_stream_set:socket(Streams)).
+    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
+    rst_stream__(Stream, ErrorCode, chatterbox_h2_stream_set:socket(Streams)).
 
--spec send_trailers(h2_stream_set:stream_set(), stream_id(), hpack:headers()) -> ok.
+-spec send_trailers(chatterbox_h2_stream_set:stream_set(), stream_id(), hpack:headers()) -> ok.
 send_trailers(Streams, StreamId, Trailers) ->
     send_trailers_(StreamId, Trailers, [], Streams).
 
--spec send_trailers(h2_stream_set:stream_set(), stream_id(), hpack:headers(), send_opts()) -> ok.
+-spec send_trailers(chatterbox_h2_stream_set:stream_set(), stream_id(), hpack:headers(), send_opts()) -> ok.
 send_trailers(Streams, StreamId, Trailers, Opts) ->
     send_trailers_(StreamId, Trailers, Opts, Streams).
 
 actually_send_trailers(Streams, StreamId, Trailers) ->
-    Stream = h2_stream_set:get(StreamId, Streams),
-    PeerSettings = h2_stream_set:get_peer_settings(Streams),
-    {Lock, EncodeContext} = h2_stream_set:get_encode_context(Streams, Trailers),
+    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
+    PeerSettings = chatterbox_h2_stream_set:get_peer_settings(Streams),
+    {Lock, EncodeContext} = chatterbox_h2_stream_set:get_encode_context(Streams, Trailers),
     {FramesToSend, NewContext} =
-    h2_frame_headers:to_frames(h2_stream_set:stream_id(Stream),
+    chatterbox_h2_frame_headers:to_frames(chatterbox_h2_stream_set:stream_id(Stream),
                                Trailers,
                                EncodeContext,
                                PeerSettings#settings.max_frame_size,
                                true
                               ),
 
-    sock:send(h2_stream_set:socket(Streams), [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
+    chatterbox_sock:send(chatterbox_h2_stream_set:socket(Streams), [chatterbox_h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
 
-    h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
+    chatterbox_h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
     ok.
 
--spec send_body(h2_stream_set:stream_set(), stream_id(), binary()) -> ok.
+-spec send_body(chatterbox_h2_stream_set:stream_set(), stream_id(), binary()) -> ok.
 send_body(Pid, StreamId, Body) ->
     send_body_(StreamId, Body, [], Pid).
 
--spec send_body(h2_stream_set:stream_set(), stream_id(), binary(), send_opts()) -> ok.
+-spec send_body(chatterbox_h2_stream_set:stream_set(), stream_id(), binary(), send_opts()) -> ok.
 send_body(Pid, StreamId, Body, Opts) ->
     send_body_(StreamId, Body, Opts, Pid).
 
--spec send_request(h2_stream_set:stream_set(), hpack:headers(), binary()) -> ok.
+-spec send_request(chatterbox_h2_stream_set:stream_set(), hpack:headers(), binary()) -> ok.
 send_request(Streams, Headers, Body) ->
-    {CallbackMod, CallbackOpts} = h2_stream_set:get_callback(Streams),
+    {CallbackMod, CallbackOpts} = chatterbox_h2_stream_set:get_callback(Streams),
     send_request(Streams, Headers, Body, CallbackMod, CallbackOpts).
 
--spec send_request(h2_stream_set:stream_set(), hpack:headers(), binary(), atom(), list()) -> ok.
+-spec send_request(chatterbox_h2_stream_set:stream_set(), hpack:headers(), binary(), atom(), list()) -> ok.
 send_request(Streams, Headers, Body, CallbackMod, CallbackOpts) ->
-    gen_server:call(h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, [], self()}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, [], self()}).
 
--spec send_ping(h2_stream_set:stream_set()) -> ok.
+-spec send_ping(chatterbox_h2_stream_set:stream_set()) -> ok.
 send_ping(Streams) ->
-    Pid = h2_stream_set:connection(Streams),
+    Pid = chatterbox_h2_stream_set:connection(Streams),
     gen_statem:call(Pid, {send_ping, self()}, infinity),
     ok.
 
--spec get_peer(h2_stream_set:stream_set()) ->
+-spec get_peer(chatterbox_h2_stream_set:stream_set()) ->
     {ok, {inet:ip_address(), inet:port_number()}} | {error, term()}.
 get_peer(Streams) ->
-    Socket = h2_stream_set:socket(Streams),
-    sock:peername(Socket).
+    Socket = chatterbox_h2_stream_set:socket(Streams),
+    chatterbox_sock:peername(Socket).
 
--spec get_peercert(h2_stream_set:stream_set()) ->
+-spec get_peercert(chatterbox_h2_stream_set:stream_set()) ->
     {ok, binary()} | {error, term()}.
 get_peercert(Streams) ->
-    Socket = h2_stream_set:socket(Streams),
-    sock:peercert(Socket).
+    Socket = chatterbox_h2_stream_set:socket(Streams),
+    chatterbox_sock:peercert(Socket).
 
--spec is_push(h2_stream_set:stream_set()) -> boolean().
+-spec is_push(chatterbox_h2_stream_set:stream_set()) -> boolean().
 is_push(Streams) ->
-    #settings{enable_push=Push} = h2_stream_set:get_peer_settings(Streams),
+    #settings{enable_push=Push} = chatterbox_h2_stream_set:get_peer_settings(Streams),
     case Push of
         1 -> true;
         _ -> false
     end.
 
 new_stream(Streams, Headers, Body) ->
-    gen_server:call(h2_stream_set:connection(Streams), {new_stream, undefined, [], Headers, Body, [], self()}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, undefined, [], Headers, Body, [], self()}).
 
 %% @doc `new_stream/6' accepts Headers so they can be sent within the connection process
 %% when a stream id is assigned. This ensures that another process couldn't also have
 %% requested a new stream and send its headers before the stream with a lower id, which
 %% results in the server closing the connection when it gets headers for the lower id stream.
--spec new_stream(h2_stream_set:stream_set(), module(), term(), hpack:headers(), send_opts(), pid()) -> {stream_id(), pid()} | {error, error_code()}.
+-spec new_stream(chatterbox_h2_stream_set:stream_set(), module(), term(), hpack:headers(), send_opts(), pid()) -> {stream_id(), pid()} | {error, error_code()}.
 new_stream(Streams, CallbackMod, CallbackOpts, Headers, Opts, NotifyPid) ->
-    gen_server:call(h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Opts, NotifyPid}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Opts, NotifyPid}).
 
--spec new_stream(h2_stream_set:stream_set(), module(), term(), hpack:headers(), any(), send_opts(), pid()) -> {stream_id(), pid()} | {error, error_code()}.
+-spec new_stream(chatterbox_h2_stream_set:stream_set(), module(), term(), hpack:headers(), any(), send_opts(), pid()) -> {stream_id(), pid()} | {error, error_code()}.
 new_stream(Streams, CallbackMod, CallbackOpts, Headers, Body, Opts, NotifyPid) ->
-    gen_server:call(h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, Opts, NotifyPid}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, Opts, NotifyPid}).
 
--spec send_promise(h2_stream_set:stream_set(), stream_id(), hpack:headers()) -> {stream_id(), pid()} | {error, error_code()}.
+-spec send_promise(chatterbox_h2_stream_set:stream_set(), stream_id(), hpack:headers()) -> {stream_id(), pid()} | {error, error_code()}.
 send_promise(Streams, StreamId, Headers) ->
-    gen_server:call(h2_stream_set:connection(Streams), {send_promise, StreamId, Headers, self()}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {send_promise, StreamId, Headers, self()}).
 
--spec get_response(h2_stream_set:stream_set(), stream_id()) ->
+-spec get_response(chatterbox_h2_stream_set:stream_set(), stream_id()) ->
                           {ok, {hpack:headers(), iodata(), iodata()}}
                            | not_ready.
 get_response(Streams, StreamId) ->
-    Stream = h2_stream_set:get(StreamId, Streams),
-    case h2_stream_set:type(Stream) of
+    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
+    case chatterbox_h2_stream_set:type(Stream) of
         closed ->
             {_, _NewStreams0} =
-            h2_stream_set:close(
+            chatterbox_h2_stream_set:close(
               Stream,
               garbage,
               Streams),
-            {ok, h2_stream_set:response(Stream)};
+            {ok, chatterbox_h2_stream_set:response(Stream)};
         active ->
             not_ready
     end.
 
--spec get_streams(pid()) -> h2_stream_set:stream_set().
+-spec get_streams(pid()) -> chatterbox_h2_stream_set:stream_set().
 get_streams(Pid) ->
     gen_statem:call(Pid, streams).
 
@@ -413,13 +413,13 @@ get_streams(Pid) ->
 send_window_update(Pid, Size) ->
     gen_statem:cast(Pid, {send_window_update, Size}).
 
--spec update_settings(pid(), h2_frame_settings:payload()) -> ok.
+-spec update_settings(pid(), chatterbox_h2_frame_settings:payload()) -> ok.
 update_settings(Pid, Payload) ->
     gen_statem:cast(Pid, {update_settings, Payload}).
 
--spec stop(h2_stream_set:stream_set()) -> ok.
+-spec stop(chatterbox_h2_stream_set:stream_set()) -> ok.
 stop(Streams) ->
-    Pid = h2_stream_set:connection(Streams),
+    Pid = chatterbox_h2_stream_set:connection(Streams),
     gen_statem:cast(Pid, stop).
 
 %% The listen state only exists to wait around for new prim_inet
@@ -451,7 +451,7 @@ listen(info, {inet_async, ListenSocket, Ref, {ok, ClientSocket}},
       Http2Settings,
       #connection{
          %% TODO there appears to be no way to set garbage_on_end for a server here
-        streams = h2_stream_set:new(server, {Transport, Socket}, undefined, [], false),
+        streams = chatterbox_h2_stream_set:new(server, {Transport, Socket}, undefined, [], false),
          socket={Transport, Socket}
         });
 listen(timeout, _, State) ->
@@ -459,7 +459,7 @@ listen(timeout, _, State) ->
 listen(Type, Msg, State) ->
     handle_event(Type, Msg, State).
 
--spec handshake(gen_statem:event_type(), {frame, h2_frame:frame()} | term(), connection()) ->
+-spec handshake(gen_statem:event_type(), {frame, chatterbox_h2_frame:frame()} | term(), connection()) ->
                     {next_state,
                      handshake|connected|closing,
                      connection()}.
@@ -478,7 +478,7 @@ connected(Event, {frame, Frame},
           #connection{streams=Streams}=Conn
          ) ->
 
-    {SelfSettings, PeerSettings} = h2_stream_set:get_settings(Streams),
+    {SelfSettings, PeerSettings} = chatterbox_h2_stream_set:get_settings(Streams),
     route_frame(Event, Frame, SelfSettings, PeerSettings, Conn);
 connected(info, send_all_we_can, State=#connection{send_all_we_can_timer=undefined}) ->
     %% either the connection is new, or we haven't gotten
@@ -490,7 +490,7 @@ connected(info, actually_send_all_we_can, State) ->
     %% time to do the thing, but do it in a spawn so we don't block
     %% the connection
     {_, Ref} = spawn_monitor(fun() ->
-                          h2_stream_set:send_all_we_can(State#connection.streams)
+                          chatterbox_h2_stream_set:send_all_we_can(State#connection.streams)
                   end),
     {keep_state, State#connection{send_all_we_can_timer=Ref}};
 connected(info, {'DOWN', Ref, process, _, _}, State=#connection{send_all_we_can_timer=Ref}) ->
@@ -518,17 +518,17 @@ closing(_, _Message,
         #connection{
            socket=Socket
           }=Conn) ->
-    sock:close(Socket),
+    chatterbox_sock:close(Socket),
     {stop, normal, Conn};
 closing(Type, Msg, State) ->
     handle_event(Type, Msg, State).
 
 %% route_frame's job needs to be "now that we've read a frame off the
 %% wire, do connection based things to it and/or forward it to the
-%% http2 stream processor (h2_stream:recv_frame)
+%% http2 stream processor (chatterbox_h2_stream:recv_frame)
 -spec route_frame(
         gen_statem:event_type(),
-        h2_frame:frame() | {error, term()},
+        chatterbox_h2_frame:frame() | {error, term()},
         SelfSettings :: settings(),
         PeerSettings :: settings(),
         connection()) ->
@@ -556,7 +556,7 @@ route_frame(Event, {H, Payload},
             #connection{pings = Pings}=Conn)
     when H#frame_header.type == ?PING,
          ?IS_FLAG((H#frame_header.flags), ?FLAG_ACK) ->
-    case maps:get(h2_frame_ping:to_binary(Payload), Pings, undefined) of
+    case maps:get(chatterbox_h2_frame_ping:to_binary(Payload), Pings, undefined) of
         undefined ->
             ok;
         {NotifyPid, _} ->
@@ -577,7 +577,7 @@ route_frame(Event, {#frame_header{type=T}, _}, _SelfSettings, _PeerSettings, Con
 route_frame(Event, Frame, _SelfSettings, _PeerSettings, #connection{}=Conn) ->
     error_logger:error_msg("Frame condition not covered by pattern match."
                            "Please open a github issue with this output: ~s",
-                           [h2_frame:format(Frame)]),
+                           [chatterbox_h2_frame:format(Frame)]),
     F = iolist_to_binary(io_lib:format("~p", [Frame])),
     go_away(Event, ?PROTOCOL_ERROR, <<"unhandled frame ", F/binary>>, Conn).
 
@@ -592,14 +592,14 @@ handle_settings(Event, {H, Payload},
          ?NOT_FLAG((H#frame_header.flags), ?FLAG_ACK) ->
     %% Need a way of processing settings so I know which ones came in
     %% on this one payload.
-    case h2_frame_settings:validate(Payload) of
+    case chatterbox_h2_frame_settings:validate(Payload) of
         ok ->
             {settings, PList} = Payload,
 
             PS=#settings{
                initial_window_size=OldIWS,
                header_table_size=HTS
-              } = h2_stream_set:get_peer_settings_locked(Streams),
+              } = chatterbox_h2_stream_set:get_peer_settings_locked(Streams),
 
             Delta =
                 case proplists:get_value(?SETTINGS_INITIAL_WINDOW_SIZE, PList) of
@@ -608,16 +608,16 @@ handle_settings(Event, {H, Payload},
                     NewIWS ->
                         NewIWS - OldIWS
                 end,
-            NewPeerSettings = h2_frame_settings:overlay(PS, Payload),
+            NewPeerSettings = chatterbox_h2_frame_settings:overlay(PS, Payload),
             %% We've just got connection settings from a peer. He have a
             %% couple of jobs to do here w.r.t. flow control
 
-            h2_stream_set:update_peer_settings(Streams, NewPeerSettings),
+            chatterbox_h2_stream_set:update_peer_settings(Streams, NewPeerSettings),
             case proplists:get_value(?SETTINGS_HEADER_TABLE_SIZE, PList) /= undefined of
                 true ->
-                    {lock, EncodeContext} = h2_stream_set:get_encode_context(Streams),
+                    {lock, EncodeContext} = chatterbox_h2_stream_set:get_encode_context(Streams),
                     NewEncodeContext = hpack:new_max_table_size(HTS, EncodeContext),
-                    h2_stream_set:release_encode_context(Streams, {lock, NewEncodeContext});
+                    chatterbox_h2_stream_set:release_encode_context(Streams, {lock, NewEncodeContext});
                 false ->
                     ok
             end,
@@ -627,18 +627,18 @@ handle_settings(Event, {H, Payload},
             %% everywhere. It's up to them if they need to do
             %% anything.
             UpdatedStreams1 =
-            h2_stream_set:update_all_send_windows(Delta, Streams),
+            chatterbox_h2_stream_set:update_all_send_windows(Delta, Streams),
 
             UpdatedStreams2 =
             case proplists:get_value(?SETTINGS_MAX_CONCURRENT_STREAMS, PList) of
                 undefined ->
                     UpdatedStreams1;
                 NewMax ->
-                    h2_stream_set:update_my_max_active(NewMax, UpdatedStreams1)
+                    chatterbox_h2_stream_set:update_my_max_active(NewMax, UpdatedStreams1)
             end,
 
 
-            socksend(Conn, h2_frame_settings:ack()),
+            socksend(Conn, chatterbox_h2_frame_settings:ack()),
             maybe_reply(Event, {next_state, connected, Conn#connection{
                                                          %% Why aren't we updating send_window_size here? Section 6.9.2 of
                                                          %% the spec says: "The connection flow-control window can only be
@@ -664,8 +664,8 @@ handle_settings(Event, {H, _Payload},
             %% have the lock to do so
             #settings{
                initial_window_size=OldIWS
-              } = h2_stream_set:get_self_settings_locked(Streams),
-            h2_stream_set:update_self_settings(Streams, NewSettings),
+              } = chatterbox_h2_stream_set:get_self_settings_locked(Streams),
+            chatterbox_h2_stream_set:update_self_settings(Streams, NewSettings),
             UpdatedStreams1 =
                 case NewSettings#settings.initial_window_size of
                     undefined ->
@@ -676,7 +676,7 @@ handle_settings(Event, {H, _Payload},
                             true -> send_window_update(self(), Delta);
                             false -> ok
                         end,
-                        h2_stream_set:update_all_recv_windows(Delta, Streams)
+                        chatterbox_h2_stream_set:update_all_recv_windows(Delta, Streams)
                 end,
 
             UpdatedStreams2 =
@@ -684,7 +684,7 @@ handle_settings(Event, {H, _Payload},
                     undefined ->
                         UpdatedStreams1;
                     NewMax ->
-                        h2_stream_set:update_their_max_active(NewMax, UpdatedStreams1)
+                        chatterbox_h2_stream_set:update_their_max_active(NewMax, UpdatedStreams1)
                 end,
             maybe_reply(Event, {next_state,
              connected,
@@ -703,8 +703,8 @@ handle_event(_, {send_window_update, Size},
              #connection{
                 socket=Socket
                 }=Conn) ->
-    h2_frame_window_update:send(Socket, Size, 0),
-    h2_stream_set:increment_socket_recv_window(Size, Conn#connection.streams),
+    chatterbox_h2_frame_window_update:send(Socket, Size, 0),
+    chatterbox_h2_stream_set:increment_socket_recv_window(Size, Conn#connection.streams),
     {keep_state, Conn};
 handle_event(_, {update_settings, Http2Settings},
              #connection{}=Conn) ->
@@ -716,20 +716,20 @@ handle_event(_, {send_headers, StreamId, Headers, Opts}, Conn) ->
 handle_event(_, {actually_send_trailers, StreamId, Trailers}, Conn=#connection{streams=Streams,
                                                                                socket=Socket}) ->
 
-    {Lock, EncodeContext} = h2_stream_set:get_encode_context(Streams, Trailers),
-    Stream = h2_stream_set:get(StreamId, Streams),
-    PeerSettings = h2_stream_set:get_peer_settings(Streams),
+    {Lock, EncodeContext} = chatterbox_h2_stream_set:get_encode_context(Streams, Trailers),
+    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
+    PeerSettings = chatterbox_h2_stream_set:get_peer_settings(Streams),
     {FramesToSend, NewContext} =
-    h2_frame_headers:to_frames(h2_stream_set:stream_id(Stream),
+    chatterbox_h2_frame_headers:to_frames(chatterbox_h2_stream_set:stream_id(Stream),
                                Trailers,
                                EncodeContext,
                                PeerSettings#settings.max_frame_size,
                                true
                               ),
 
-    sock:send(Socket, [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
+    chatterbox_sock:send(Socket, [chatterbox_h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
 
-    h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
+    chatterbox_h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
     {keep_state, Conn};
 handle_event(Event, {rst_stream, StreamId, ErrorCode},
              #connection{
@@ -737,7 +737,7 @@ handle_event(Event, {rst_stream, StreamId, ErrorCode},
                 socket = _Socket
                }=Conn
             ) ->
-    Stream = h2_stream_set:get(StreamId, Streams),
+    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
     rst_stream_(Event, Stream, ErrorCode, Conn);
 handle_event(_, {send_trailers, StreamId, Headers, Opts},
              #connection{
@@ -747,14 +747,14 @@ handle_event(_, {send_trailers, StreamId, Headers, Opts},
             ) ->
     BodyComplete = proplists:get_value(send_end_stream, Opts, true),
 
-    Stream0 = h2_stream_set:get(StreamId, Streams),
-    case h2_stream_set:type(Stream0) of
+    Stream0 = chatterbox_h2_stream_set:get(StreamId, Streams),
+    case chatterbox_h2_stream_set:type(Stream0) of
         active ->
-            h2_stream_set:send_what_we_can(
+            chatterbox_h2_stream_set:send_what_we_can(
               StreamId,
               fun(Stream) -> 
-                      NewS = h2_stream_set:update_trailers(Headers, Stream),
-                      h2_stream_set:update_data_queue(h2_stream_set:queued_data(Stream), BodyComplete, NewS)
+                      NewS = chatterbox_h2_stream_set:update_trailers(Headers, Stream),
+                      chatterbox_h2_stream_set:update_data_queue(chatterbox_h2_stream_set:queued_data(Stream), BodyComplete, NewS)
               end, Streams),
             send_t(Stream0, Headers),
 
@@ -802,7 +802,7 @@ handle_event(_, {send_bin, Binary},
     {keep_state, Conn};
 handle_event(_, {send_frame, Frame},
              #connection{} =Conn) ->
-    Binary = h2_frame:to_binary(Frame),
+    Binary = chatterbox_h2_frame:to_binary(Frame),
     socksend(Conn, Binary),
     {keep_state, Conn};
 handle_event(stop, _StateName,
@@ -815,16 +815,16 @@ handle_event({call, From}, streams,
     {keep_state, Conn, [{reply, From, Streams}]};
 handle_event({call, From}, {get_response, StreamId},
                   #connection{}=Conn) ->
-    Stream = h2_stream_set:get(StreamId, Conn#connection.streams),
+    Stream = chatterbox_h2_stream_set:get(StreamId, Conn#connection.streams),
     {Reply, NewStreams} =
-        case h2_stream_set:type(Stream) of
+        case chatterbox_h2_stream_set:type(Stream) of
             closed ->
                 {_, NewStreams0} =
-                    h2_stream_set:close(
+                    chatterbox_h2_stream_set:close(
                       Stream,
                       garbage,
                       Conn#connection.streams),
-                {{ok, h2_stream_set:response(Stream)}, NewStreams0};
+                {{ok, chatterbox_h2_stream_set:response(Stream)}, NewStreams0};
             active ->
                 {not_ready, Conn#connection.streams}
         end,
@@ -858,9 +858,9 @@ handle_event({call, From}, {send_request, NotifyPid, Headers, Body, CallbackMod,
 handle_event({call, From}, {send_ping, NotifyPid},
              #connection{pings = Pings} = Conn) ->
     PingValue = crypto:strong_rand_bytes(8),
-    Frame = h2_frame_ping:new(PingValue),
+    Frame = chatterbox_h2_frame_ping:new(PingValue),
     Headers = #frame_header{stream_id = 0, flags = 16#0},
-    Binary = h2_frame:to_binary({Headers, Frame}),
+    Binary = chatterbox_h2_frame:to_binary({Headers, Frame}),
 
     case socksend(Conn, Binary) of
         ok ->
@@ -909,7 +909,7 @@ handle_event(info, {go_away, ErrorCode}, Conn) ->
 %           #connection{}=Conn) ->
 %    handle_socket_error(R, Conn);
 handle_event(Event, Msg, Conn) ->
-    error_logger:error_msg("h2_connection received unexpected event of type ~p : ~p", [Event, Msg]),
+    error_logger:error_msg("chatterbox_h2_connection received unexpected event of type ~p : ~p", [Event, Msg]),
     %%go_away(Event, ?PROTOCOL_ERROR, Conn).
     {keep_state, Conn}.
 
@@ -926,7 +926,7 @@ terminate(_Reason, _StateName, _State) ->
 new_stream_(From, CallbackMod, CallbackState, Headers, Opts, NotifyPid, Conn=#connection{streams=Streams}) ->
     {Reply, NewStreams} =
         case
-            h2_stream_set:new_stream(
+            chatterbox_h2_stream_set:new_stream(
               next,
               NotifyPid,
               CallbackMod,
@@ -957,7 +957,7 @@ new_stream_(From, CallbackMod, CallbackState, Headers, Opts, NotifyPid, Conn=#co
 new_stream_(From, CallbackMod, CallbackState, Headers, Body, Opts, NotifyPid, Conn=#connection{streams=Streams}) ->
     {Reply, NewStreams} =
         case
-            h2_stream_set:new_stream(
+            chatterbox_h2_stream_set:new_stream(
               next,
               NotifyPid,
               CallbackMod,
@@ -987,22 +987,22 @@ new_stream_(From, CallbackMod, CallbackState, Headers, Body, Opts, NotifyPid, Co
 
 send_headers_(StreamId, Headers, Opts, Streams) ->
     StreamComplete = proplists:get_value(send_end_stream, Opts, false),
-    Socket = h2_stream_set:socket(Streams),
+    Socket = chatterbox_h2_stream_set:socket(Streams),
 
-    Stream = h2_stream_set:get(StreamId, Streams),
-    case h2_stream_set:type(Stream) of
+    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
+    case chatterbox_h2_stream_set:type(Stream) of
         active ->
-            {_SelfSettings, PeerSettings} = h2_stream_set:get_settings(Streams),
-            {Lock, EncodeContext} = h2_stream_set:get_encode_context(Streams, Headers),
+            {_SelfSettings, PeerSettings} = chatterbox_h2_stream_set:get_settings(Streams),
+            {Lock, EncodeContext} = chatterbox_h2_stream_set:get_encode_context(Streams, Headers),
             {FramesToSend, NewContext} =
-            h2_frame_headers:to_frames(h2_stream_set:stream_id(Stream),
+            chatterbox_h2_frame_headers:to_frames(chatterbox_h2_stream_set:stream_id(Stream),
                                        Headers,
                                        EncodeContext,
                                        PeerSettings#settings.max_frame_size,
                                        StreamComplete
                                       ),
-            sock:send(Socket, [h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
-            h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
+            chatterbox_sock:send(Socket, [chatterbox_h2_frame:to_binary(Frame) || Frame <- FramesToSend]),
+            chatterbox_h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
             send_h(Stream, Headers),
             ok;
         idle ->
@@ -1015,10 +1015,10 @@ send_headers_(StreamId, Headers, Opts, Streams) ->
     end.
 
 send_promise_(From, StreamId, Headers, NotifyPid, Conn=#connection{streams=Streams}) ->
-    {CallbackMod, CallbackOpts} = h2_stream_set:get_callback(Streams),
+    {CallbackMod, CallbackOpts} = chatterbox_h2_stream_set:get_callback(Streams),
     {Reply, NewStreams} =
         case
-            h2_stream_set:new_stream(
+            chatterbox_h2_stream_set:new_stream(
               next,
               NotifyPid,
               CallbackMod,
@@ -1040,10 +1040,10 @@ send_promise_(From, StreamId, Headers, NotifyPid, Conn=#connection{streams=Strea
                 {error, _Code} ->
                     Conn1;
                 {NextId0, _Pid} ->
-                    {Lock, OldContext} = h2_stream_set:get_encode_context(Streams, Headers),
+                    {Lock, OldContext} = chatterbox_h2_stream_set:get_encode_context(Streams, Headers),
                     %% TODO: This could be a series of frames, not just one
                     {PromiseFrame, NewContext} =
-                    h2_frame_push_promise:to_frame(
+                    chatterbox_h2_frame_push_promise:to_frame(
                       StreamId,
                       NextId0,
                       Headers,
@@ -1051,13 +1051,13 @@ send_promise_(From, StreamId, Headers, NotifyPid, Conn=#connection{streams=Strea
                      ),
 
                     %% Send the PP Frame
-                    Binary = h2_frame:to_binary(PromiseFrame),
-                    sock:send(h2_stream_set:socket(Streams), Binary),
+                    Binary = chatterbox_h2_frame:to_binary(PromiseFrame),
+                    chatterbox_sock:send(chatterbox_h2_stream_set:socket(Streams), Binary),
 
-                    h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
+                    chatterbox_h2_stream_set:release_encode_context(Streams, {Lock, NewContext}),
 
                     %% Get the promised stream rolling
-                    h2_stream:send_pp(_Pid, Headers),
+                    chatterbox_h2_stream:send_pp(_Pid, Headers),
 
                     Conn1
             end,
@@ -1067,14 +1067,14 @@ send_promise_(From, StreamId, Headers, NotifyPid, Conn=#connection{streams=Strea
 send_trailers_(StreamId, Trailers, Opts, Streams) ->
     BodyComplete = proplists:get_value(send_end_stream, Opts, true),
 
-    Stream0 = h2_stream_set:get(StreamId, Streams),
-    case h2_stream_set:type(Stream0) of
+    Stream0 = chatterbox_h2_stream_set:get(StreamId, Streams),
+    case chatterbox_h2_stream_set:type(Stream0) of
         active ->
-                h2_stream_set:send_what_we_can(
+                chatterbox_h2_stream_set:send_what_we_can(
                   StreamId,
                   fun(Stream) ->
-                          NewS = h2_stream_set:update_trailers(Trailers, Stream),
-                          h2_stream_set:update_data_queue(h2_stream_set:queued_data(Stream), BodyComplete, NewS)
+                          NewS = chatterbox_h2_stream_set:update_trailers(Trailers, Stream),
+                          chatterbox_h2_stream_set:update_data_queue(chatterbox_h2_stream_set:queued_data(Stream), BodyComplete, NewS)
                   end, Streams),
 
             send_t(Stream0, Trailers),
@@ -1099,17 +1099,17 @@ go_away(Event, ErrorCode, Reason, Conn) ->
     maybe_reply(Event, {next_state, closing, Conn}, ok).
 
 
--spec go_away_(error_code(), sock:socket(), h2_stream_set:stream_set()) -> ok.
+-spec go_away_(error_code(), chatterbox_sock:socket(), chatterbox_h2_stream_set:stream_set()) -> ok.
 go_away_(ErrorCode, Socket, Streams) ->
     go_away_(ErrorCode, <<>>, Socket, Streams).
 
 go_away_(ErrorCode, Reason, Socket, Streams) ->
-    NAS = h2_stream_set:get_next_available_stream_id(Streams),
-    GoAway = h2_frame_goaway:new(NAS, ErrorCode, Reason),
-    GoAwayBin = h2_frame:to_binary({#frame_header{
+    NAS = chatterbox_h2_stream_set:get_next_available_stream_id(Streams),
+    GoAway = chatterbox_h2_frame_goaway:new(NAS, ErrorCode, Reason),
+    GoAwayBin = chatterbox_h2_frame:to_binary({#frame_header{
                                        stream_id=0
                                       }, GoAway}),
-    sock:send(Socket, GoAwayBin),
+    chatterbox_sock:send(Socket, GoAwayBin),
     ok.
 
 maybe_reply({call, From}, {next_state, NewState, NewData}, Msg) ->
@@ -1123,7 +1123,7 @@ maybe_reply(_, Return, _) ->
 %% after sending that frame, so we send it from here.
 -spec rst_stream_(
         gen_statem:event_type(),
-        h2_stream_set:stream(),
+        chatterbox_h2_stream_set:stream(),
         error_code(),
         connection()
        ) -> {next_state, connected, connection()}.
@@ -1132,28 +1132,28 @@ rst_stream_(Event, Stream, ErrorCode, Conn) ->
     maybe_reply(Event, {next_state, connected, Conn}, ok).
 
 -spec rst_stream__(
-        h2_stream_set:stream(),
+        chatterbox_h2_stream_set:stream(),
         error_code(),
-        sock:socket()
+        chatterbox_sock:socket()
        ) -> ok.
 rst_stream__(Stream, ErrorCode, Sock) ->
-    case h2_stream_set:type(Stream) of
+    case chatterbox_h2_stream_set:type(Stream) of
         active ->
             %% Can this ever be undefined?
-            Pid = h2_stream_set:stream_pid(Stream),
-            %% h2_stream's rst_stream will take care of letting us know
+            Pid = chatterbox_h2_stream_set:stream_pid(Stream),
+            %% chatterbox_h2_stream's rst_stream will take care of letting us know
             %% this stream is closed and will send us a message to close the
             %% stream somewhere else
-            h2_stream:rst_stream(Pid, ErrorCode);
+            chatterbox_h2_stream:rst_stream(Pid, ErrorCode);
         _ ->
-            StreamId = h2_stream_set:stream_id(Stream),
-            RstStream = h2_frame_rst_stream:new(ErrorCode),
-            RstStreamBin = h2_frame:to_binary(
+            StreamId = chatterbox_h2_stream_set:stream_id(Stream),
+            RstStream = chatterbox_h2_frame_rst_stream:new(ErrorCode),
+            RstStreamBin = chatterbox_h2_frame:to_binary(
                           {#frame_header{
                               stream_id=StreamId
                              },
                            RstStream}),
-            sock:send(Sock, RstStreamBin)
+            chatterbox_sock:send(Sock, RstStreamBin)
     end.
 
 -spec send_settings(settings(), connection()) -> connection().
@@ -1163,8 +1163,8 @@ send_settings(SettingsToSend,
                  settings_sent=SS
                 }=Conn) ->
     Ref = make_ref(),
-    {CurrentSettings, _PeerSettings} = h2_stream_set:get_settings(Streams),
-    Bin = h2_frame_settings:send(CurrentSettings, SettingsToSend),
+    {CurrentSettings, _PeerSettings} = chatterbox_h2_stream_set:get_settings(Streams),
+    Bin = chatterbox_h2_frame_settings:send(CurrentSettings, SettingsToSend),
     socksend(Conn, Bin),
     send_ack_timeout({Ref,SettingsToSend}),
     Conn#connection{
@@ -1180,9 +1180,9 @@ send_ack_timeout(SS) ->
 
 spawn_data_receiver(Socket, Streams, Flow) ->
     Connection = self(),
-    h2_stream_set:set_socket_recv_window_size(?DEFAULT_INITIAL_WINDOW_SIZE, Streams),
-    h2_stream_set:set_socket_send_window_size(?DEFAULT_INITIAL_WINDOW_SIZE, Streams),
-    Type = h2_stream_set:stream_set_type(Streams),
+    chatterbox_h2_stream_set:set_socket_recv_window_size(?DEFAULT_INITIAL_WINDOW_SIZE, Streams),
+    chatterbox_h2_stream_set:set_socket_send_window_size(?DEFAULT_INITIAL_WINDOW_SIZE, Streams),
+    Type = chatterbox_h2_stream_set:stream_set_type(Streams),
     ConnDetails = get('__h2_connection_details'),
     spawn_opt(
         fun() ->
@@ -1194,7 +1194,7 @@ spawn_data_receiver(Socket, Streams, Flow) ->
 
 
 receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
-    case h2_frame:read(Socket, infinity) of
+    case chatterbox_h2_frame:read(Socket, infinity) of
         {error, closed} ->
             Connection ! socket_closed(Socket);
         {error, Reason} ->
@@ -1204,14 +1204,14 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
             go_away_(Code, <<"stream error">>, Socket, Streams),
             Connection ! {go_away, Code};
         {stream_error, StreamId, Code} ->
-            Stream = h2_stream_set:get(StreamId, Streams),
+            Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
             rst_stream__(Stream, Code, Socket),
             receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder);
         {#frame_header{length=L} = Header, Payload} = Frame ->
             %% TODO move some of the cases of route_frame into here
             %% so we can send frames directly to the stream pids
             StreamId = Header#frame_header.stream_id,
-            #settings{max_frame_size=MFS} = h2_stream_set:get_self_settings(Streams),
+            #settings{max_frame_size=MFS} = chatterbox_h2_stream_set:get_self_settings(Streams),
             case Header#frame_header.type of
                 _ when L > MFS ->
                     go_away_(?FRAME_SIZE_ERROR, list_to_binary(io_lib:format("received frame of size ~p over max of ~p", [L, MFS])), Socket, Streams),
@@ -1227,17 +1227,17 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                     ok = gen_statem:call(Connection, {settings, Frame}),
                     receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
                 ?DATA ->
-                    case L > h2_stream_set:socket_recv_window_size(Streams) of
+                    case L > chatterbox_h2_stream_set:socket_recv_window_size(Streams) of
                         true ->
                             go_away_(?FLOW_CONTROL_ERROR, Socket, Streams),
                             Connection ! {go_away, ?FLOW_CONTROL_ERROR};
                         false ->
-                            Stream = h2_stream_set:get(Header#frame_header.stream_id, Streams),
+                            Stream = chatterbox_h2_stream_set:get(Header#frame_header.stream_id, Streams),
 
-                            case h2_stream_set:type(Stream) of
+                            case chatterbox_h2_stream_set:type(Stream) of
                                 active ->
                                     case {
-                                      h2_stream_set:recv_window_size(Stream) < L,
+                                      chatterbox_h2_stream_set:recv_window_size(Stream) < L,
                                       Flow,
                                       L > 0
                                      } of
@@ -1253,29 +1253,29 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                             %% Make window size great again if we've used up half our buffer
                                             #settings{
                                                   initial_window_size=IWS
-                                                 } = h2_stream_set:get_peer_settings(Streams),
-                                            case {h2_stream_set:decrement_socket_recv_window(L, Streams), IWS div 2} of
+                                                 } = chatterbox_h2_stream_set:get_peer_settings(Streams),
+                                            case {chatterbox_h2_stream_set:decrement_socket_recv_window(L, Streams), IWS div 2} of
                                                 {Rem, Half} when Rem < Half ->
                                                     %% refill the window
-                                                    h2_frame_window_update:send(Socket, IWS - Rem, 0),
-                                                    h2_stream_set:increment_socket_recv_window(IWS - Rem, Streams);
+                                                    chatterbox_h2_frame_window_update:send(Socket, IWS - Rem, 0),
+                                                    chatterbox_h2_stream_set:increment_socket_recv_window(IWS - Rem, Streams);
                                                 _ ->
                                                     ok
                                             end,
 
                                             %send_window_update(Connection, L),
                                             recv_data(Stream, Frame),
-                                            h2_frame_window_update:send(Socket,
+                                            chatterbox_h2_frame_window_update:send(Socket,
                                                                         L, Header#frame_header.stream_id);
                                         %% Either
                                         %% {false, auto, false} or
                                         %% {false, manual, _DoesntMatter}
                                         _Tried ->
                                             recv_data(Stream, Frame),
-                                            h2_stream_set:decrement_socket_recv_window(L, Streams),
-                                            {ok, ok} = h2_stream_set:update(Header#frame_header.stream_id,
+                                            chatterbox_h2_stream_set:decrement_socket_recv_window(L, Streams),
+                                            {ok, ok} = chatterbox_h2_stream_set:update(Header#frame_header.stream_id,
                                                                             fun(Str) ->
-                                                                                    {h2_stream_set:decrement_recv_window(L, Str), ok}
+                                                                                    {chatterbox_h2_stream_set:decrement_recv_window(L, Str), ok}
                                                                             end,
                                                                             Streams)
                                     end,
@@ -1289,13 +1289,13 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                     go_away_(?PROTOCOL_ERROR, <<"Headers on even streamid on server">>, Socket, Streams),
                     Connection ! {go_away, ?PROTOCOL_ERROR};
                 ?HEADERS when Type == server ->
-                    Stream0 = h2_stream_set:get(StreamId, Streams),
+                    Stream0 = chatterbox_h2_stream_set:get(StreamId, Streams),
                     ContinuationType =
-                    case h2_stream_set:type(Stream0) of
+                    case chatterbox_h2_stream_set:type(Stream0) of
                         idle ->
-                            {CallbackMod, CallbackOpts} = h2_stream_set:get_callback(Streams),
+                            {CallbackMod, CallbackOpts} = chatterbox_h2_stream_set:get_callback(Streams),
                             case
-                                h2_stream_set:new_stream(
+                                chatterbox_h2_stream_set:new_stream(
                                   StreamId,
                                   Connection,
                                   CallbackMod,
@@ -1329,13 +1329,13 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                          false ->
                                              read_continuations(Connection, Socket, StreamId, Streams, [Frame])
                                      end,
-                            HeadersBin = h2_frame_headers:from_frames(Frames),
+                            HeadersBin = chatterbox_h2_frame_headers:from_frames(Frames),
                             case hpack:decode(HeadersBin, Decoder) of
                                 {error, compression_error} ->
                                     go_away_(?COMPRESSION_ERROR, Socket, Streams),
                                     Connection ! {go_away, ?COMPRESSION_ERROR};
                                 {ok, {Headers, NewDecoder}} ->
-                                    Stream = h2_stream_set:get(StreamId, Streams),
+                                    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
                                     %% always headers or trailers!
                                     recv_h_(Stream, Socket, Headers),
                                     case ?IS_FLAG((Header#frame_header.flags), ?FLAG_END_STREAM) of
@@ -1355,13 +1355,13 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                  false ->
                                      read_continuations(Connection, Socket, StreamId, Streams, [Frame])
                              end,
-                    HeadersBin = h2_frame_headers:from_frames(Frames),
+                    HeadersBin = chatterbox_h2_frame_headers:from_frames(Frames),
                     case hpack:decode(HeadersBin, Decoder) of
                         {error, compression_error} ->
                             go_away_(?COMPRESSION_ERROR, Socket, Streams),
                             Connection ! {go_away, ?COMPRESSION_ERROR};
                         {ok, {Headers, NewDecoder}} ->
-                            Stream = h2_stream_set:get(StreamId, Streams),
+                            Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
                             %% always headers or trailers!
                             recv_h_(Stream, Socket, Headers),
                             case ?IS_FLAG((Header#frame_header.flags), ?FLAG_END_STREAM) of
@@ -1382,10 +1382,10 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                     go_away_(?PROTOCOL_ERROR, <<"RST on stream 0">>, Socket, Streams),
                     Connection ! {go_away, ?PROTOCOL_ERROR};
                 ?RST_STREAM ->
-                    Stream = h2_stream_set:get(StreamId, Streams),
+                    Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
                     %% TODO: anything with this?
-                    %% EC = h2_frame_rst_stream:error_code(Payload),
-                    case h2_stream_set:type(Stream) of
+                    %% EC = chatterbox_h2_frame_rst_stream:error_code(Payload),
+                    case chatterbox_h2_stream_set:type(Stream) of
                         idle ->
                             go_away_(?PROTOCOL_ERROR, <<"RST on idle stream">>, Socket, Streams),
                             Connection ! {go_away, ?PROTOCOL_ERROR};
@@ -1400,18 +1400,18 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                     go_away_(?FRAME_SIZE_ERROR, <<"Ping packet length is not 8">>, Socket, Streams),
                     Connection ! {go_away, ?FRAME_SIZE_ERROR};
                 ?PING when ?NOT_FLAG((Header#frame_header.flags), ?FLAG_ACK) ->
-                    Ack = h2_frame_ping:ack(Payload),
-                    sock:send(Socket, h2_frame:to_binary(Ack)),
+                    Ack = chatterbox_h2_frame_ping:ack(Payload),
+                    chatterbox_sock:send(Socket, chatterbox_h2_frame:to_binary(Ack)),
                     receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
                 ?PUSH_PROMISE when Type == server ->
                     go_away_(?PROTOCOL_ERROR, <<"push_promise sent to server">>, Socket, Streams),
                     Connection ! {go_away, ?PROTOCOL_ERROR};
                 ?PUSH_PROMISE when Type == client ->
-                    PSID = h2_frame_push_promise:promised_stream_id(Payload),
-                    Old = h2_stream_set:get(StreamId, Streams),
-                    NotifyPid = h2_stream_set:notify_pid(Old),
-                    {CallbackMod, CallbackOpts} = h2_stream_set:get_callback(Streams),
-                    h2_stream_set:new_stream(
+                    PSID = chatterbox_h2_frame_push_promise:promised_stream_id(Payload),
+                    Old = chatterbox_h2_stream_set:get(StreamId, Streams),
+                    NotifyPid = chatterbox_h2_stream_set:notify_pid(Old),
+                    {CallbackMod, CallbackOpts} = chatterbox_h2_stream_set:get_callback(Streams),
+                    chatterbox_h2_stream_set:new_stream(
                       PSID,
                       NotifyPid,
                       CallbackMod,
@@ -1425,14 +1425,14 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                  false ->
                                      read_continuations(Connection, Socket, StreamId, Streams, [Frame])
                              end,
-                    PromiseBin = h2_frame_headers:from_frames(Frames),
+                    PromiseBin = chatterbox_h2_frame_headers:from_frames(Frames),
                     case hpack:decode(PromiseBin, Decoder) of
                         {error, compression_error} ->
                             go_away_(?COMPRESSION_ERROR, Socket, Streams),
                             Connection ! {go_away, ?COMPRESSION_ERROR};
                         {ok, {Promise, NewDecoder}} ->
 
-                            New = h2_stream_set:get(PSID, Streams),
+                            New = chatterbox_h2_stream_set:get(PSID, Streams),
                             recv_pp(New, Promise),
 
                             case ?IS_FLAG((Header#frame_header.flags), ?FLAG_END_STREAM) of
@@ -1445,8 +1445,8 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                             receive_data(Socket, Streams, Connection, Flow, Type, false, NewDecoder)
                     end;
                 ?WINDOW_UPDATE when StreamId == 0 ->
-                    WSI = h2_frame_window_update:size_increment(Payload),
-                    NewSendWindow = h2_stream_set:increment_socket_send_window(WSI, Streams),
+                    WSI = chatterbox_h2_frame_window_update:size_increment(Payload),
+                    NewSendWindow = chatterbox_h2_stream_set:increment_socket_send_window(WSI, Streams),
                     case NewSendWindow > 2147483647 of
                         true ->
                             go_away_(?FLOW_CONTROL_ERROR, <<"stream 0 window update exceeded limit">>, Socket, Streams),
@@ -1455,13 +1455,13 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                             %% TODO: Priority Sort! Right now, it's just sorting on
                             %% lowest stream_id first
                             Connection ! send_all_we_can,
-                            %h2_stream_set:send_all_we_can(Streams),
+                            %chatterbox_h2_stream_set:send_all_we_can(Streams),
                             receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder)
                     end;
                 ?WINDOW_UPDATE ->
-                    WSI = h2_frame_window_update:size_increment(Payload),
-                    Stream0 = h2_stream_set:get(StreamId, Streams),
-                    case h2_stream_set:type(Stream0) of
+                    WSI = chatterbox_h2_frame_window_update:size_increment(Payload),
+                    Stream0 = chatterbox_h2_stream_set:get(StreamId, Streams),
+                    case chatterbox_h2_stream_set:type(Stream0) of
                         idle ->
                             go_away_(?PROTOCOL_ERROR, list_to_binary(io_lib:format("window update on idle stream ~p", [StreamId])), Socket, Streams),
                             Connection ! {go_away, ?PROTOCOL_ERROR};
@@ -1469,17 +1469,17 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                             rst_stream__(Stream0, ?STREAM_CLOSED, Socket),
                             receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
                         active ->
-                            NewSSWS = h2_stream_set:send_window_size(Stream0)+WSI,
+                            NewSSWS = chatterbox_h2_stream_set:send_window_size(Stream0)+WSI,
 
                             case NewSSWS > 2147483647 of
                                 true ->
                                     rst_stream__(Stream0, ?FLOW_CONTROL_ERROR, Socket),
                                     receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
                                 false ->
-                                    h2_stream_set:send_what_we_can(
+                                    chatterbox_h2_stream_set:send_what_we_can(
                                       StreamId,
                                       fun(Stream) ->
-                                              h2_stream_set:increment_send_window_size(WSI, Stream)
+                                              chatterbox_h2_stream_set:increment_send_window_size(WSI, Stream)
                                       end, Streams),
                                     receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder)
                             end
@@ -1493,7 +1493,7 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
     end.
 
 read_continuations(Connection, Socket, StreamId, Streams, Acc) ->
-    case h2_frame:read(Socket, infinity) of
+    case chatterbox_h2_frame:read(Socket, infinity) of
         {error, closed} ->
             Connection ! socket_closed(Socket),
             exit(normal);
@@ -1557,7 +1557,7 @@ start_http2_server(
     case accept_preface(Socket) of
         ok ->
             Flow = application:get_env(chatterbox, server_flow_control, auto),
-            case sock:peername(Socket) of
+            case chatterbox_sock:peername(Socket) of
                 {ok, {Host, Port}} ->
                     put('__h2_connection_details', {server, element(1, Socket), Host, Port});
                 _ ->
@@ -1580,7 +1580,7 @@ start_http2_server(
 %% We're going to iterate through the preface string until we're done
 %% or hit a mismatch
 accept_preface(Socket) ->
-    case sock:recv(Socket, byte_size(?PREFACE), 5000) of
+    case chatterbox_sock:recv(Socket, byte_size(?PREFACE), 5000) of
         {ok, ?PREFACE} ->
             ok;
         _ ->
@@ -1622,7 +1622,7 @@ handle_socket_error(Reason, Conn) ->
 socksend(#connection{
             socket=Socket
            }, Data) ->
-    case sock:send(Socket, Data) of
+    case chatterbox_sock:send(Socket, Data) of
         ok ->
             ok;
         {error, Reason} ->
@@ -1634,11 +1634,11 @@ socksend(#connection{
 recv_h_(Stream,
        Sock,
        Headers) ->
-    case h2_stream_set:type(Stream) of
+    case chatterbox_h2_stream_set:type(Stream) of
         active ->
             %% If the stream is active, let the process deal with it.
-            Pid = h2_stream_set:pid(Stream),
-            h2_stream:send_event(Pid, {recv_h, Headers});
+            Pid = chatterbox_h2_stream_set:pid(Stream),
+            chatterbox_h2_stream:send_event(Pid, {recv_h, Headers});
         closed ->
             %% If the stream is closed, there's no running FSM
             rst_stream__(Stream, ?STREAM_CLOSED, Sock);
@@ -1651,37 +1651,37 @@ recv_h_(Stream,
 
 
 -spec send_h(
-        h2_stream_set:stream(),
+        chatterbox_h2_stream_set:stream(),
         hpack:headers()) ->
                     ok.
 send_h(Stream, Headers) ->
-    case h2_stream_set:pid(Stream) of
+    case chatterbox_h2_stream_set:pid(Stream) of
         undefined ->
             %% TODO: Should this be some kind of error?
             ok;
         Pid ->
-            h2_stream:send_event(Pid, {send_h, Headers})
+            chatterbox_h2_stream:send_event(Pid, {send_h, Headers})
     end.
 
 -spec send_t(
-        h2_stream_set:stream(),
+        chatterbox_h2_stream_set:stream(),
         hpack:headers()) ->
                     ok.
 send_t(Stream, Trailers) ->
-    case h2_stream_set:pid(Stream) of
+    case chatterbox_h2_stream_set:pid(Stream) of
         undefined ->
             %% TODO:  Should this be some kind of error?
             ok;
         Pid ->
-            h2_stream:send_event(Pid, {send_t, Trailers})
+            chatterbox_h2_stream:send_event(Pid, {send_t, Trailers})
     end.
 
 
 recv_es_(Stream, Sock) ->
-    case h2_stream_set:type(Stream) of
+    case chatterbox_h2_stream_set:type(Stream) of
         active ->
-            Pid = h2_stream_set:pid(Stream),
-            h2_stream:send_event(Pid, recv_es);
+            Pid = chatterbox_h2_stream_set:pid(Stream),
+            chatterbox_h2_stream:send_event(Pid, recv_es);
         closed ->
             rst_stream__(Stream, ?STREAM_CLOSED, Sock);
         idle ->
@@ -1689,39 +1689,39 @@ recv_es_(Stream, Sock) ->
     end.
 
 
--spec recv_pp(h2_stream_set:stream(),
+-spec recv_pp(chatterbox_h2_stream_set:stream(),
               hpack:headers()) ->
                      ok.
 recv_pp(Stream, Headers) ->
-    case h2_stream_set:pid(Stream) of
+    case chatterbox_h2_stream_set:pid(Stream) of
         undefined ->
             %% Should this be an error?
             ok;
         Pid ->
-            h2_stream:send_event(Pid, {recv_pp, Headers})
+            chatterbox_h2_stream:send_event(Pid, {recv_pp, Headers})
     end.
 
--spec recv_data(h2_stream_set:stream(),
-                h2_frame:frame()) ->
+-spec recv_data(chatterbox_h2_stream_set:stream(),
+                chatterbox_h2_frame:frame()) ->
                         ok.
 recv_data(Stream, Frame) ->
-    case h2_stream_set:pid(Stream) of
+    case chatterbox_h2_stream_set:pid(Stream) of
         undefined ->
             %% Again, error? These aren't errors now because the code
             %% isn't set up to handle errors when these are called
             %% anyway.
             ok;
         Pid ->
-            h2_stream:send_event(Pid, {recv_data, Frame})
+            chatterbox_h2_stream:send_event(Pid, {recv_data, Frame})
     end.
 
 send_request_(NotifyPid, Conn, Streams, Headers, Body) ->
-    {CallbackMod, CallbackOpts} = h2_stream_set:get_callback(Streams),
+    {CallbackMod, CallbackOpts} = chatterbox_h2_stream_set:get_callback(Streams),
     send_request_(NotifyPid, Conn, Streams, Headers, Body, CallbackMod, CallbackOpts).
 
 send_request_(NotifyPid, Conn, Streams, Headers, Body, CallbackMod, CallbackOpts) ->
     case
-        h2_stream_set:new_stream(
+        chatterbox_h2_stream_set:new_stream(
             next,
             NotifyPid,
             CallbackMod,
@@ -1742,18 +1742,18 @@ send_request_(NotifyPid, Conn, Streams, Headers, Body, CallbackMod, CallbackOpts
 send_body_(StreamId, Body, Opts, Streams) ->
     BodyComplete = proplists:get_value(send_end_stream, Opts, true),
 
-    Stream0 = h2_stream_set:get(StreamId, Streams),
-    case h2_stream_set:type(Stream0) of
+    Stream0 = chatterbox_h2_stream_set:get(StreamId, Streams),
+    case chatterbox_h2_stream_set:type(Stream0) of
         active ->
-                h2_stream_set:send_what_we_can(
+                chatterbox_h2_stream_set:send_what_we_can(
                   StreamId,
                   fun(Stream) ->
-                          OldBody = h2_stream_set:queued_data(Stream),
+                          OldBody = chatterbox_h2_stream_set:queued_data(Stream),
                           NewBody = case is_binary(OldBody) of
                                         true -> <<OldBody/binary, Body/binary>>;
                                         false -> Body
                                     end,
-                          h2_stream_set:update_data_queue(NewBody, BodyComplete, Stream)
+                          chatterbox_h2_stream_set:update_data_queue(NewBody, BodyComplete, Stream)
                   end, Streams),
 
                 ok;

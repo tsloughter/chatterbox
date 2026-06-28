@@ -43,7 +43,7 @@ send_window_update(_Config) ->
          {<<"user-agent">>, <<"chattercli/0.0.1 :D">>}
         ],
     {H, _} =
-        h2_frame_headers:to_frames(1,
+        chatterbox_h2_frame_headers:to_frames(1,
                                    RequestHeaders,
                                    hpack:new_context(),
                                    16384,
@@ -64,7 +64,7 @@ send_window_update(_Config) ->
        {#frame_header{
            stream_id=1
           },
-        h2_frame_window_update:new(1)
+        chatterbox_h2_frame_window_update:new(1)
        }
       ]
      ),
@@ -90,7 +90,7 @@ send_window_update_with_zero(_Config) ->
            length=24,
            stream_id=0
           },
-        h2_frame_window_update:new(0)
+        chatterbox_h2_frame_window_update:new(0)
        }
       ]),
 
@@ -99,7 +99,7 @@ send_window_update_with_zero(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 send_window_update_with_zero_on_stream(_Config) ->
@@ -117,7 +117,7 @@ send_window_update_with_zero_on_stream(_Config) ->
         ],
 
     {[H], _} =
-        h2_frame_headers:to_frames(1,
+        chatterbox_h2_frame_headers:to_frames(1,
                                    RequestHeaders,
                                    hpack:new_context(),
                                    16384,
@@ -131,7 +131,7 @@ send_window_update_with_zero_on_stream(_Config) ->
            length=24,
            stream_id=1
           },
-        h2_frame_window_update:new(0)
+        chatterbox_h2_frame_window_update:new(0)
        }
       ]),
 
@@ -140,7 +140,7 @@ send_window_update_with_zero_on_stream(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{RstStreamH, RstStream}] = Resp,
     ?assertEqual(?RST_STREAM, (RstStreamH#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_rst_stream:error_code(RstStream))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_rst_stream:error_code(RstStream))),
     ok.
 
 send_window_updates_greater_than_max(_Config) ->
@@ -151,7 +151,7 @@ send_window_updates_greater_than_max(_Config) ->
             length=24,
             stream_id=0
            },
-         h2_frame_window_update:new(2147483647)
+         chatterbox_h2_frame_window_update:new(2147483647)
         },
 
     http2c:send_unaltered_frames(Client, [ F, F ]),
@@ -161,7 +161,7 @@ send_window_updates_greater_than_max(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?FLOW_CONTROL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?FLOW_CONTROL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 send_window_updates_greater_than_max_on_stream(_Config) ->
@@ -179,7 +179,7 @@ send_window_updates_greater_than_max_on_stream(_Config) ->
         ],
 
     {[H], _} =
-        h2_frame_headers:to_frames(1,
+        chatterbox_h2_frame_headers:to_frames(1,
                                    RequestHeaders,
                                    hpack:new_context(),
                                    16384,
@@ -190,7 +190,7 @@ send_window_updates_greater_than_max_on_stream(_Config) ->
             length=24,
             stream_id=1
            },
-         h2_frame_window_update:new(2147483647)
+         chatterbox_h2_frame_window_update:new(2147483647)
          },
 
     http2c:send_unaltered_frames(
@@ -202,7 +202,7 @@ send_window_updates_greater_than_max_on_stream(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{RstStreamH, RstStream}] = Resp,
     ?assertEqual(?RST_STREAM, (RstStreamH#frame_header.type)),
-    ?assertEqual(?FLOW_CONTROL_ERROR, (h2_frame_rst_stream:error_code(RstStream))),
+    ?assertEqual(?FLOW_CONTROL_ERROR, (chatterbox_h2_frame_rst_stream:error_code(RstStream))),
     ok.
 
 send_settings_initial_window_size_greater_than_max(_Config) ->
@@ -216,5 +216,5 @@ send_settings_initial_window_size_greater_than_max(_Config) ->
     [{_GoAwayH, GoAway}] = Resp,
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?FLOW_CONTROL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?FLOW_CONTROL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.

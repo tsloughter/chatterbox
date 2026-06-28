@@ -18,7 +18,7 @@ start_link(Ref, Transport, Opts) ->
 init(Ref, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
     Http2Settings = proplists:get_value(http2_settings, Opts, chatterbox:settings(server)),
-    h2_connection:become({transport(Transport), Socket}, Http2Settings).
+    chatterbox_h2_connection:become({transport(Transport), Socket}, Http2Settings).
 
 transport(ranch_ssl) ->
     ssl;

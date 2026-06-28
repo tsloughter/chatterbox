@@ -57,7 +57,7 @@ end_per_suite(_Config) ->
 
 complex_request(_Config) ->
     application:set_env(chatterbox, client_initial_window_size, 99999999),
-    {ok, Client} = h2_client:start_link(),
+    {ok, Client} = chatterbox_h2_client:start_link(),
     RequestHeaders =
         [
          {<<":method">>, <<"GET">>},
@@ -68,7 +68,7 @@ complex_request(_Config) ->
          {<<"accept-encoding">>, <<"gzip, deflate">>},
          {<<"user-agent">>, <<"chattercli/0.0.1 :D">>}
         ],
-    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = h2_client:sync_request(Client, RequestHeaders, <<>>),
+    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = chatterbox_h2_client:sync_request(Client, RequestHeaders, <<>>),
 
     ct:pal("Response Headers: ~p", [ResponseHeaders]),
     ct:pal("Response Body: ~p", [ResponseBody]),
@@ -78,7 +78,7 @@ complex_request(_Config) ->
 upgrade_tcp_connection(_Config) ->
     %% TODO Why don't the options of keyfile/certfile/cacertfile work here
     %% but instead we have to turn off verification?
-    {ok, Client} = h2_client:start_ssl_upgrade_link("localhost", 8081, <<>>, [{verify, verify_none}]),
+    {ok, Client} = chatterbox_h2_client:start_ssl_upgrade_link("localhost", 8081, <<>>, [{verify, verify_none}]),
 
     RequestHeaders =
         [
@@ -90,14 +90,14 @@ upgrade_tcp_connection(_Config) ->
          {<<"accept-encoding">>, <<"gzip, deflate">>},
          {<<"user-agent">>, <<"chattercli/0.0.1 :D">>}
         ],
-    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = h2_client:sync_request(Client, RequestHeaders, <<>>),
+    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = chatterbox_h2_client:sync_request(Client, RequestHeaders, <<>>),
     ct:pal("Response Headers: ~p", [ResponseHeaders]),
     ct:pal("Response Body: ~p", [ResponseBody]),
     ok.
 
 
 basic_push(_Config) ->
-    {ok, Client} = h2_client:start_link(),
+    {ok, Client} = chatterbox_h2_client:start_link(),
     RequestHeaders =
         [
          {<<":method">>, <<"GET">>},
@@ -108,7 +108,7 @@ basic_push(_Config) ->
          {<<"accept-encoding">>, <<"gzip, deflate">>},
          {<<"user-agent">>, <<"chattercli/0.0.1 :D">>}
         ],
-    {ok, {ResponseHeaders, _ResponseBody, _Trailers}} = h2_client:sync_request(Client, RequestHeaders, <<>>),
+    {ok, {ResponseHeaders, _ResponseBody, _Trailers}} = chatterbox_h2_client:sync_request(Client, RequestHeaders, <<>>),
 
     ct:pal("Response Headers: ~p", [ResponseHeaders]),
     %ct:pal("Response Body: ~p", [ResponseBody]),
@@ -121,18 +121,18 @@ basic_push(_Config) ->
 
     Streams = Client,
     ct:pal("Streams ~p", [Streams]),
-    ?assertEqual(0, (h2_stream_set:my_active_count(Streams))),
-    %?assertEqual(0, (h2_stream_set:their_active_count(Streams))),
+    ?assertEqual(0, (chatterbox_h2_stream_set:my_active_count(Streams))),
+    %?assertEqual(0, (chatterbox_h2_stream_set:their_active_count(Streams))),
 
-    MyActiveStreams = h2_stream_set:my_active_streams(Streams),
+    MyActiveStreams = chatterbox_h2_stream_set:my_active_streams(Streams),
     ct:pal("my active ~p", [MyActiveStreams]),
     ?assertEqual(0, (length(MyActiveStreams))), %% This closed stream should be GC'ed
 
-    TheirActiveStreams = h2_stream_set:their_active_streams(Streams),
+    TheirActiveStreams = chatterbox_h2_stream_set:their_active_streams(Streams),
     ct:pal("my active ~p", [TheirActiveStreams]),
     ?assertEqual(12, (length(TheirActiveStreams))),
 
-    [?assertEqual(closed, (h2_stream_set:type(S))) || S <- TheirActiveStreams],
+    [?assertEqual(closed, (chatterbox_h2_stream_set:type(S))) || S <- TheirActiveStreams],
     ok.
 
 wait_for_n_notifications(0) ->
@@ -153,11 +153,11 @@ wait_for_n_notifications(N) ->
 connect_timeout(_Config) ->
     {ok, Port} = application:get_env(chatterbox, port),
     ?assertMatch({error, {shutdown, timeout}},
-                 h2_client:start(http, "localhost", Port, [], #{connect_timeout => 0})),
+                 chatterbox_h2_client:start(http, "localhost", Port, [], #{connect_timeout => 0})),
     ok.
 
 get_peer_in_handler(_Config) ->
-    {ok, Client} = h2_client:start_link(),
+    {ok, Client} = chatterbox_h2_client:start_link(),
     RequestHeaders =
         [
          {<<":method">>, <<"GET">>},
@@ -170,13 +170,13 @@ get_peer_in_handler(_Config) ->
         ],
 
 
-    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = h2_client:sync_request(Client, RequestHeaders, <<>>),
+    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = chatterbox_h2_client:sync_request(Client, RequestHeaders, <<>>),
     ct:pal("Response Headers: ~p", [ResponseHeaders]),
     ct:pal("Response Body: ~p", [ResponseBody]),
     ok.
 
 send_body_opts(_Config) ->
-    {ok, Client} = h2_client:start_link(),
+    {ok, Client} = chatterbox_h2_client:start_link(),
     RequestHeaders =
         [
          {<<":method">>, <<"GET">>},
@@ -190,7 +190,7 @@ send_body_opts(_Config) ->
 
     ExpectedResponseBody = <<"BodyPart1\nBodyPart2">>,
 
-    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = h2_client:sync_request(Client, RequestHeaders, <<>>),
+    {ok, {ResponseHeaders, ResponseBody, _Trailers}} = chatterbox_h2_client:sync_request(Client, RequestHeaders, <<>>),
     ct:pal("Response Headers: ~p", [ResponseHeaders]),
     ct:pal("Response Body: ~p", [ResponseBody]),
     ?assertEqual(ExpectedResponseBody, (iolist_to_binary(ResponseBody))),
@@ -217,13 +217,13 @@ echo_body(_Config) ->
                       flags=?FLAG_END_HEADERS,
                       stream_id=3
                      },
-                   h2_frame_headers:new(HeadersBin)
+                   chatterbox_h2_frame_headers:new(HeadersBin)
                   },
 
     http2c:send_unaltered_frames(Client, [HeaderFrame]),
 
     Body = crypto:strong_rand_bytes(128),
-    BodyFrames = h2_frame_data:to_frames(3, Body, #settings{max_frame_size=64}),
+    BodyFrames = chatterbox_h2_frame_data:to_frames(3, Body, #settings{max_frame_size=64}),
     http2c:send_unaltered_frames(Client, BodyFrames),
 
     timer:sleep(300),
@@ -231,7 +231,7 @@ echo_body(_Config) ->
     DataFrames = lists:filter(fun({#frame_header{type=?DATA}, _}) -> true;
                                  (_) -> false end, Frames),
     ResponseData = lists:map(fun({_, DataP}) ->
-                                     h2_frame_data:data(DataP)
+                                     chatterbox_h2_frame_data:data(DataP)
                              end, DataFrames),
     io:format("Body: ~p, response: ~p~n", [Body, ResponseData]),
     ?assertEqual(Body, (iolist_to_binary(ResponseData))),
@@ -258,13 +258,13 @@ large_body(_Config) ->
                       flags=?FLAG_END_HEADERS,
                       stream_id=3
                      },
-                   h2_frame_headers:new(HeadersBin)
+                   chatterbox_h2_frame_headers:new(HeadersBin)
                   },
 
     http2c:send_unaltered_frames(Client, [HeaderFrame]),
 
     Body = crypto:strong_rand_bytes(32828),
-    BodyFrames = h2_frame_data:to_frames(3, Body, #settings{max_frame_size=16384}),
+    BodyFrames = chatterbox_h2_frame_data:to_frames(3, Body, #settings{max_frame_size=16384}),
     http2c:send_unaltered_frames(Client, BodyFrames),
 
     timer:sleep(300),
@@ -272,7 +272,7 @@ large_body(_Config) ->
     DataFrames = lists:filter(fun({#frame_header{type=?DATA}, _}) -> true;
                                  (_) -> false end, Frames),
     ResponseData = lists:map(fun({_, DataP}) ->
-                                     h2_frame_data:data(DataP)
+                                     chatterbox_h2_frame_data:data(DataP)
                              end, DataFrames),
     io:format("response: ~p~n", [ResponseData]),
     ?assertEqual(size(Body), iolist_size(ResponseData)),

@@ -37,7 +37,7 @@ sends_unknown_extension_frame(_Config) ->
            stream_id=0,
            length=8
           },
-        h2_frame_ping:new(Data)
+        chatterbox_h2_frame_ping:new(Data)
        }
       ]),
 

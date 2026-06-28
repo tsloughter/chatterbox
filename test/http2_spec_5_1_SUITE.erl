@@ -68,7 +68,7 @@ total_streams_above_max_concurrent(Config) ->
         lists:foldl(
           fun(StreamId, EncodeContext) ->
                   {H1, NewEC} =
-                      h2_frame_headers:to_frames(
+                      chatterbox_h2_frame_headers:to_frames(
                      StreamId,
                      RequestHeaders,
                      EncodeContext,
@@ -98,7 +98,7 @@ total_streams_above_max_concurrent(Config) ->
 
     %% Now, open AStreamTooFar
     {HFinal, _UnusedEC} =
-        h2_frame_headers:to_frames(
+        chatterbox_h2_frame_headers:to_frames(
        AStreamTooFar,
        RequestHeaders,
        FinalEC,
@@ -142,7 +142,7 @@ exceeds_max_concurrent_streams(Config) ->
         lists:foldl(
           fun(StreamId, EncodeContext) ->
                   {H1, NewEC} =
-                      h2_frame_headers:to_frames(
+                      chatterbox_h2_frame_headers:to_frames(
                      StreamId,
                      RequestHeaders,
                      EncodeContext,
@@ -168,7 +168,7 @@ exceeds_max_concurrent_streams(Config) ->
     %% Now, open AStreamTooFar
 
     {HFinal, _UnusedEC} =
-        h2_frame_headers:to_frames(
+        chatterbox_h2_frame_headers:to_frames(
        AStreamTooFar,
        RequestHeaders,
        FinalEC,
@@ -181,14 +181,14 @@ exceeds_max_concurrent_streams(Config) ->
     ?assertEqual(1, (length(Response))),
     [{RstH, RstP}] = Response,
     ?assertEqual(?RST_STREAM, (RstH#frame_header.type)),
-    ?assertEqual(?REFUSED_STREAM, (h2_frame_rst_stream:error_code(RstP))),
+    ?assertEqual(?REFUSED_STREAM, (chatterbox_h2_frame_rst_stream:error_code(RstP))),
     ok.
 
 sends_rst_stream_to_idle(_Config) ->
     {ok, Client} = http2c:start_link(),
 
-    RstStream = h2_frame_rst_stream:new(?CANCEL),
-    RstStreamBin = h2_frame:to_binary(
+    RstStream = chatterbox_h2_frame_rst_stream:new(?CANCEL),
+    RstStreamBin = chatterbox_h2_frame:to_binary(
                   {#frame_header{
                       stream_id=1
                      },
@@ -200,7 +200,7 @@ sends_rst_stream_to_idle(_Config) ->
     ct:pal("Resp: ~p", [Resp]),
     ?assertEqual(1, (length(Resp))),
     [{_GoAwayH, GoAway}] = Resp,
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 half_closed_remote_sends_headers(_Config) ->
@@ -217,7 +217,7 @@ half_closed_remote_sends_headers(_Config) ->
         ],
 
     {H1, EC} =
-        h2_frame_headers:to_frames(1,
+        chatterbox_h2_frame_headers:to_frames(1,
                                    RequestHeaders,
                                    hpack:new_context(),
                                    16384,
@@ -228,7 +228,7 @@ half_closed_remote_sends_headers(_Config) ->
     %% The stream should be half closed remote now
 
     {H2, _EC2} =
-        h2_frame_headers:to_frames(1,
+        chatterbox_h2_frame_headers:to_frames(1,
                                    RequestHeaders,
                                    EC,
                                    16384,
@@ -251,7 +251,7 @@ half_closed_remote_sends_headers(_Config) ->
     ?assert(length(RstStreams) > 0),
     {RstStreamH, RstStream} = hd(RstStreams),
     ?assertEqual(?RST_STREAM, (RstStreamH#frame_header.type)),
-    ?assertEqual(?STREAM_CLOSED, (h2_frame_rst_stream:error_code(RstStream))),
+    ?assertEqual(?STREAM_CLOSED, (chatterbox_h2_frame_rst_stream:error_code(RstStream))),
     ok.
 
 closed_receives_headers(_Config) ->
@@ -268,7 +268,7 @@ closed_receives_headers(_Config) ->
         ],
 
     {H1, EC} =
-        h2_frame_headers:to_frames(1,
+        chatterbox_h2_frame_headers:to_frames(1,
                                    RequestHeaders,
                                    hpack:new_context(),
                                    16384,
@@ -282,7 +282,7 @@ closed_receives_headers(_Config) ->
     %% The stream should be closed now
 
     {H2, _EC2} =
-        h2_frame_headers:to_frames(1,
+        chatterbox_h2_frame_headers:to_frames(1,
                                    RequestHeaders,
                                    EC,
                                    16384,
@@ -304,16 +304,16 @@ closed_receives_headers(_Config) ->
     ?assert(length(RstStreams) > 0),
     {RstStreamH, RstStream} = hd(RstStreams),
     ?assertEqual(?RST_STREAM, (RstStreamH#frame_header.type)),
-    ?assertEqual(?STREAM_CLOSED, (h2_frame_rst_stream:error_code(RstStream))),
+    ?assertEqual(?STREAM_CLOSED, (chatterbox_h2_frame_rst_stream:error_code(RstStream))),
     ok.
 
 sends_window_update_to_idle(_Config) ->
     {ok, Client} = http2c:start_link(),
-    WUBin = h2_frame:to_binary(
+    WUBin = chatterbox_h2_frame:to_binary(
                   {#frame_header{
                       stream_id=1
                      },
-                   h2_frame_window_update:new(1)
+                   chatterbox_h2_frame_window_update:new(1)
                    }),
 
     http2c:send_binary(Client, WUBin),
@@ -323,7 +323,7 @@ sends_window_update_to_idle(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 client_sends_even_stream_id(_Config) ->
@@ -341,7 +341,7 @@ client_sends_even_stream_id(_Config) ->
         ],
 
     {H, _} =
-        h2_frame_headers:to_frames(2,
+        chatterbox_h2_frame_headers:to_frames(2,
                                    RequestHeaders,
                                    hpack:new_context(),
                                    16384,
@@ -354,5 +354,5 @@ client_sends_even_stream_id(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.

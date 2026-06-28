@@ -2,7 +2,7 @@
 
 -include_lib("chatterbox/include/http2.hrl").
 
--behaviour(h2_stream).
+-behaviour(chatterbox_h2_stream).
 
 -export([
          init/3,
@@ -29,7 +29,7 @@ init(ConnPid, StreamId, _Opts) ->
             Headers :: hpack:headers(),
             CallbackState :: any()) -> {ok, NewState :: any()}.
 on_receive_headers(_Headers, State=#state{conn_pid=ConnPid}) ->
-    {ok, Peer} = h2_connection:get_peer(ConnPid),
+    {ok, Peer} = chatterbox_h2_connection:get_peer(ConnPid),
     {ok, State#state{peer=Peer}}.
 
 -spec on_send_push_promise(
@@ -52,8 +52,8 @@ on_end_stream(State=#state{conn_pid=ConnPid,
     ResponseHeaders = [
                        {<<":status">>,<<"200">>}
                       ],
-    h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
-    h2_connection:send_body(ConnPid, StreamId, Body),
+    chatterbox_h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
+    chatterbox_h2_connection:send_body(ConnPid, StreamId, Body),
     {ok, State}.
 
 handle_info(Event, State) ->

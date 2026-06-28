@@ -1,4 +1,4 @@
--module(h2_settings).
+-module(chatterbox_h2_settings).
 -include("http2.hrl").
 
 -export([

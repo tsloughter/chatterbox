@@ -1,6 +1,6 @@
--module(h2_frame_continuation).
+-module(chatterbox_h2_frame_continuation).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -15,7 +15,7 @@
           block_fragment :: binary()
 }).
 -type payload() :: #continuation{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec block_fragment(payload()) -> binary().
@@ -27,7 +27,7 @@ new(Bin) ->
     #continuation{
        block_fragment=Bin
       }.
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_,

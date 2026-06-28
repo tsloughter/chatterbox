@@ -47,7 +47,7 @@ sends_head_request(_Config) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS bor ?FLAG_END_STREAM
         },
-      h2_frame_headers:new(HeadersBin)
+      chatterbox_h2_frame_headers:new(HeadersBin)
      },
     http2c:send_unaltered_frames(Client, [HF]),
 
@@ -80,7 +80,7 @@ sends_headers_containing_trailer_part(_Config) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS
         },
-      h2_frame_headers:new(HeadersBin)
+      chatterbox_h2_frame_headers:new(HeadersBin)
      },
 
     Data = {
@@ -88,7 +88,7 @@ sends_headers_containing_trailer_part(_Config) ->
          stream_id=1,
          length=4
         },
-      h2_frame_data:new(<<"test">>)
+      chatterbox_h2_frame_data:new(<<"test">>)
      },
 
     RequestTrailers =
@@ -101,7 +101,7 @@ sends_headers_containing_trailer_part(_Config) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS bor ?FLAG_END_STREAM
         },
-      h2_frame_headers:new(TrailersBin)
+      chatterbox_h2_frame_headers:new(TrailersBin)
      },
 
     http2c:send_unaltered_frames(Client, [HF, Data, TF]),
@@ -140,7 +140,7 @@ sends_second_headers_with_no_end_stream(_Config) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS
         },
-      h2_frame_headers:new(HeadersBin)
+      chatterbox_h2_frame_headers:new(HeadersBin)
      },
 
     Data = {
@@ -148,7 +148,7 @@ sends_second_headers_with_no_end_stream(_Config) ->
          stream_id=1,
          length=2
         },
-      h2_frame_data:new(<<"hi">>)
+      chatterbox_h2_frame_data:new(<<"hi">>)
      },
 
     RequestTrailers =
@@ -161,7 +161,7 @@ sends_second_headers_with_no_end_stream(_Config) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS
         },
-      h2_frame_headers:new(TrailersBin)
+      chatterbox_h2_frame_headers:new(TrailersBin)
      },
 
     http2c:send_unaltered_frames(Client, [HF, Data, TF]),
@@ -172,7 +172,7 @@ sends_second_headers_with_no_end_stream(_Config) ->
     [{WUH, _},{Header, Payload}] = Resp,
     ?assertEqual(?WINDOW_UPDATE, (WUH#frame_header.type)),
     ?assertEqual(?RST_STREAM, (Header#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_rst_stream:error_code(Payload))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_rst_stream:error_code(Payload))),
     ok.
 
 sends_uppercase_headers(_Config) ->
@@ -232,7 +232,7 @@ test_rst_stream(RequestHeaders) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS
         },
-      h2_frame_headers:new(HeadersBin)
+      chatterbox_h2_frame_headers:new(HeadersBin)
      },
     http2c:send_unaltered_frames(Client, [HF]),
 
@@ -241,7 +241,7 @@ test_rst_stream(RequestHeaders) ->
     ?assertEqual(1, (length(Resp))),
     [{Header, Payload}] = Resp,
     ?assertEqual(?RST_STREAM, (Header#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_rst_stream:error_code(Payload))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_rst_stream:error_code(Payload))),
     ok.
 
 sends_connection_header(_Config) ->
@@ -327,7 +327,7 @@ sends_invalid_content_length_single_frame(_Config) ->
            flags=?FLAG_END_STREAM,
            length=8,
            stream_id=1
-          }, h2_frame_data:new(<<1,2,3,4,5,6,7,8>>)}]).
+          }, chatterbox_h2_frame_data:new(<<1,2,3,4,5,6,7,8>>)}]).
 
 sends_invalid_content_length_multi_frame(_Config) ->
     test_content_length(
@@ -335,13 +335,13 @@ sends_invalid_content_length_multi_frame(_Config) ->
            type=?DATA,
            length=8,
            stream_id=1
-          }, h2_frame_data:new(<<1,2,3,4,5,6,7,8>>)},
+          }, chatterbox_h2_frame_data:new(<<1,2,3,4,5,6,7,8>>)},
        {#frame_header{
            type=?DATA,
            length=8,
            flags=?FLAG_END_STREAM,
            stream_id=1
-          }, h2_frame_data:new(<<11,12,13,14,15,16,17,18>>)}
+          }, chatterbox_h2_frame_data:new(<<11,12,13,14,15,16,17,18>>)}
       ]).
 
 
@@ -365,7 +365,7 @@ test_content_length(DataFrames) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS
         },
-      h2_frame_headers:new(HeadersBin)
+      chatterbox_h2_frame_headers:new(HeadersBin)
      },
     http2c:send_unaltered_frames(Client, [HF|DataFrames]),
 
@@ -378,14 +378,14 @@ test_content_length(DataFrames) ->
     [ErrorFrame|WindowUpdates] = lists:reverse(Resp),
     {Header, Payload} = ErrorFrame,
     ?assertEqual(?RST_STREAM, (Header#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_rst_stream:error_code(Payload))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_rst_stream:error_code(Payload))),
 
     ExpectedWUs = [{#frame_header{
                        type=?WINDOW_UPDATE,
                        length=4,
                        stream_id=1
                       },
-                    h2_frame_window_update:new(8)
+                    chatterbox_h2_frame_window_update:new(8)
                    }
                    || _ <- lists:seq(1,length(DataFrames))],
 
@@ -413,7 +413,7 @@ sends_non_integer_content_length(_Context) ->
          stream_id=1,
          flags=?FLAG_END_HEADERS bor ?FLAG_END_STREAM
         },
-      h2_frame_headers:new(HeadersBin)
+      chatterbox_h2_frame_headers:new(HeadersBin)
      },
     http2c:send_unaltered_frames(Client, [HF]),
     Resp = http2c:wait_for_n_frames(Client, 1, 1),
@@ -421,6 +421,6 @@ sends_non_integer_content_length(_Context) ->
     ?assertEqual(1, (length(Resp))),
     [{Header, Payload}] = Resp,
     ?assertEqual(?RST_STREAM, (Header#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_rst_stream:error_code(Payload))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_rst_stream:error_code(Payload))),
 
     ok.

@@ -1,4 +1,4 @@
--module(h2_padding).
+-module(chatterbox_h2_padding).
 -include("http2.hrl").
 
 -export([
@@ -6,7 +6,7 @@
          read_possibly_padded_payload/2
         ]).
 
--spec is_padded(h2_frame:header()) -> boolean().
+-spec is_padded(chatterbox_h2_frame:header()) -> boolean().
 is_padded(#frame_header{flags=Flags})
     when ?IS_FLAG(Flags, ?FLAG_PADDED) ->
     true;
@@ -14,7 +14,7 @@ is_padded(_) ->
     false.
 
 -spec read_possibly_padded_payload(binary(),
-                                   h2_frame:header())
+                                   chatterbox_h2_frame:header())
                                   -> binary() | {error, error_code()}.
 read_possibly_padded_payload(Bin, H=#frame_header{flags=F})
   when ?IS_FLAG(F, ?FLAG_PADDED) ->
@@ -22,7 +22,7 @@ read_possibly_padded_payload(Bin, H=#frame_header{flags=F})
 read_possibly_padded_payload(Bin, Header) ->
     read_unpadded_payload(Bin, Header).
 
--spec read_padded_payload(binary(), h2_frame:header())
+-spec read_padded_payload(binary(), chatterbox_h2_frame:header())
                          -> binary() | {error, error_code()}.
 read_padded_payload(<<Padding:8,Bytes/bits>>,
                     #frame_header{length=Length}) ->
@@ -35,7 +35,7 @@ read_padded_payload(<<Padding:8,Bytes/bits>>,
             {error, ?PROTOCOL_ERROR}
     end.
 
--spec read_unpadded_payload(binary(), h2_frame:header())
+-spec read_unpadded_payload(binary(), chatterbox_h2_frame:header())
                            -> binary().
 read_unpadded_payload(Data, _H) ->
     Data.

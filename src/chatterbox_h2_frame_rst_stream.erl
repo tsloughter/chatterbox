@@ -1,6 +1,6 @@
--module(h2_frame_rst_stream).
+-module(chatterbox_h2_frame_rst_stream).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export([
          new/1,
@@ -14,7 +14,7 @@
           error_code :: error_code()
 }).
 -type payload() :: #rst_stream{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec new(error_code()) -> payload().
@@ -31,7 +31,7 @@ error_code(#rst_stream{error_code=EC}) ->
 format(Payload) ->
     io_lib:format("[RST Stream: ~p]", [Payload]).
 
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_,

@@ -1,4 +1,4 @@
--module(h2_stream).
+-module(chatterbox_h2_stream).
 -include("http2.hrl").
 
 %% Public API
@@ -47,11 +47,11 @@
 
 -record(stream_state, {
           stream_id = undefined :: stream_id(),
-          streams :: h2_stream_set:stream_set(),
+          streams :: chatterbox_h2_stream_set:stream_set(),
           connection = undefined :: undefined | pid(),
-          socket = undefined :: sock:socket(),
+          socket = undefined :: chatterbox_sock:socket(),
           state = idle :: stream_state_name(),
-          incoming_frames = queue:new() :: queue:queue(h2_frame:frame()),
+          incoming_frames = queue:new() :: queue:queue(chatterbox_h2_frame:frame()),
           request_headers = [] :: hpack:headers(),
           request_body :: iodata() | undefined,
           request_body_size = 0 :: non_neg_integer(),
@@ -74,7 +74,7 @@
 -export_type([state/0, callback_state/0]).
 
 -callback init(
-            Conn :: h2_stream_set:stream_set(),
+            Conn :: chatterbox_h2_stream_set:stream_set(),
             StreamId :: stream_id(),
             CallbackOptions :: list()
            ) ->
@@ -111,7 +111,7 @@
 %% Public API
 -spec start_link(
         StreamId :: stream_id(),
-        Streams :: h2_stream_set:stream_set(),
+        Streams :: chatterbox_h2_stream_set:stream_set(),
         Connection :: pid(),
         CallbackModule :: module(),
         CallbackOptions :: list()
@@ -129,7 +129,7 @@ start_link(StreamId, Streams, Connection, CallbackModule, CallbackOptions) ->
 
 -spec start(
         StreamId :: stream_id(),
-        Streams :: h2_stream_set:stream_set(),
+        Streams :: chatterbox_h2_stream_set:stream_set(),
         Connection :: pid(),
         CallbackModule :: module(),
         CallbackOptions :: list()
@@ -153,7 +153,7 @@ send_event(Pid, Event) ->
 send_pp(Pid, Headers) ->
     gen_statem:cast(Pid, {send_pp, Headers}).
 
--spec send_data(pid(), h2_frame_data:frame()) ->
+-spec send_data(pid(), chatterbox_h2_frame_data:frame()) ->
                         ok | flow_control.
 send_data(Pid, Frame) ->
     gen_statem:cast(Pid, {send_data, Frame}).
@@ -202,8 +202,8 @@ init([
                   stream_id=StreamId,
                   streams=Streams,
                   connection=ConnectionPid,
-                  socket=h2_stream_set:socket(Streams),
-                  type=h2_stream_set:stream_set_type(Streams)
+                  socket=chatterbox_h2_stream_set:socket(Streams),
+                  type=chatterbox_h2_stream_set:stream_set_type(Streams)
                  }};
 init([
       StreamId,
@@ -219,8 +219,8 @@ init([
                   stream_id=StreamId,
                   streams=Streams,
                   connection=ConnectionPid,
-                  socket=h2_stream_set:socket(Streams),
-                  type=h2_stream_set:stream_set_type(Streams)
+                  socket=chatterbox_h2_stream_set:socket(Streams),
+                  type=chatterbox_h2_stream_set:stream_set_type(Streams)
                  }, [{next_event, info, {init_callback, CBOptions}}]};
 init([
       link_connection,
@@ -414,7 +414,7 @@ open(cast, {recv_data,
         callback_state=CallbackState
        }=Stream)
   when ?NOT_FLAG(Flags, ?FLAG_END_STREAM) ->
-    Bin = h2_frame_data:data(Payload),
+    Bin = chatterbox_h2_frame_data:data(Payload),
     case CB of
         undefined ->
             {next_state,
@@ -446,7 +446,7 @@ open(cast, {recv_data,
         callback_state=CallbackState
        }=Stream)
   when ?IS_FLAG(Flags, ?FLAG_END_STREAM) ->
-    Bin = h2_frame_data:data(Payload),
+    Bin = chatterbox_h2_frame_data:data(Payload),
     case CB of
         undefined ->
             NewStream =
@@ -519,7 +519,7 @@ open(cast, {send_data,
      #stream_state{
         socket=Socket
        }=Stream) ->
-    sock:send(Socket, h2_frame:to_binary(F)),
+    chatterbox_sock:send(Socket, chatterbox_h2_frame:to_binary(F)),
 
     NextState =
         case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
@@ -537,7 +537,7 @@ open(cast, {send_data,
      #stream_state{
         socket=Socket
        }=Stream) ->
-    sock:send(Socket, h2_frame:to_binary(F)),
+    chatterbox_sock:send(Socket, chatterbox_h2_frame:to_binary(F)),
 
     NextState =
         case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
@@ -595,7 +595,7 @@ half_closed_remote(cast,
   #stream_state{
      socket=Socket
     }=Stream) ->
-    case sock:send(Socket, h2_frame:to_binary(F)) of
+    case chatterbox_sock:send(Socket, chatterbox_h2_frame:to_binary(F)) of
         ok ->
             case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
                 true ->
@@ -617,7 +617,7 @@ half_closed_remote(cast,
   #stream_state{
      socket=Socket
     }=Stream) ->
-    case sock:send(Socket, h2_frame:to_binary(F)) of
+    case chatterbox_sock:send(Socket, chatterbox_h2_frame:to_binary(F)) of
         ok ->
             case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
                 true ->
@@ -672,7 +672,7 @@ half_closed_local(cast,
     case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
         true ->
             Data =
-                [h2_frame_data:data(Payload)
+                [chatterbox_h2_frame_data:data(Payload)
                  || {#frame_header{type=?DATA}, Payload} <- queue:to_list(NewQ)],
 
             {next_state, closed,
@@ -697,7 +697,7 @@ half_closed_local(cast,
      callback_mod=CB,
      callback_state=CallbackState
      } = Stream) ->
-    Data = h2_frame_data:data(Payload),
+    Data = chatterbox_h2_frame_data:data(Payload),
     {ok, NewCBState} = callback(CB, on_receive_data, [Data], CallbackState),
     case ?IS_FLAG(Flags, ?FLAG_END_STREAM) of
         true ->
@@ -721,7 +721,7 @@ half_closed_local(cast, recv_es,
                      incoming_frames = Q
                     } = Stream) ->
     {ok, NewCBState} = callback(CB, on_end_stream, [], CallbackState),
-    Data = [h2_frame_data:data(Payload) || {#frame_header{type=?DATA}, Payload} <- queue:to_list(Q)],
+    Data = [chatterbox_h2_frame_data:data(Payload) || {#frame_header{type=?DATA}, Payload} <- queue:to_list(Q)],
     {next_state, closed,
      Stream#stream_state{
        incoming_frames=queue:new(),
@@ -754,12 +754,12 @@ half_closed_local(Type, Event, State) ->
 closed(timeout, _,
        #stream_state{stream_id=StreamId, streams=Streams}=StreamState) ->
     try 
-        Stream = h2_stream_set:get(StreamId, Streams),
-        Type = h2_stream_set:stream_set_type(Streams),
-        case h2_stream_set:type(Stream) of
+        Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
+        Type = chatterbox_h2_stream_set:stream_set_type(Streams),
+        case chatterbox_h2_stream_set:type(Stream) of
             active ->
-                NotifyPid = h2_stream_set:notify_pid(Stream),
-                GarbageOnEnd = h2_stream_set:get_garbage_on_end(Streams),
+                NotifyPid = chatterbox_h2_stream_set:notify_pid(Stream),
+                GarbageOnEnd = chatterbox_h2_stream_set:get_garbage_on_end(Streams),
                 Response =
                     case {Type, GarbageOnEnd} of
                         {server, _} -> garbage;
@@ -770,7 +770,7 @@ closed(timeout, _,
                         
                     end,
                 {_NewStream, _NewStreams} =
-                h2_stream_set:close(
+                chatterbox_h2_stream_set:close(
                   Stream,
                   Response,
                   Streams),
@@ -800,7 +800,7 @@ closed(Type, Event, State) ->
 
 send_trailers(State, Trailers, Stream=#stream_state{streams=Streams,
                                                     stream_id=StreamId}) ->
-    h2_connection:actually_send_trailers(Streams, StreamId, Trailers),
+    chatterbox_h2_connection:actually_send_trailers(Streams, StreamId, Trailers),
     case State of
         half_closed_remote ->
             {next_state, closed, Stream, 0};
@@ -816,13 +816,13 @@ handle_event(_, {send_window_update, Size},
                socket=Socket,
                stream_id=StreamId
               }=Stream) ->
-    h2_frame_window_update:send(Socket, Size, StreamId),
+    chatterbox_h2_frame_window_update:send(Socket, Size, StreamId),
     {keep_state, Stream#stream_state{}};
 handle_event(_, {send_connection_window_update, Size},
              #stream_state{
                   connection=ConnPid
                  }=State) ->
-    h2_connection:send_window_update(ConnPid, Size),
+    chatterbox_h2_connection:send_window_update(ConnPid, Size),
     {keep_state, State};
 handle_event({call, From}, stream_id, State=#stream_state{stream_id=StreamId}) ->
     {keep_state, State, [{reply, From, StreamId}]};
@@ -871,13 +871,13 @@ rst_stream_(ErrorCode,
               }=Stream
           )
             ->
-    RstStream = h2_frame_rst_stream:new(ErrorCode),
-    RstStreamBin = h2_frame:to_binary(
+    RstStream = chatterbox_h2_frame_rst_stream:new(ErrorCode),
+    RstStreamBin = chatterbox_h2_frame:to_binary(
                   {#frame_header{
                       stream_id=StreamId
                      },
                    RstStream}),
-    sock:send(Socket, RstStreamBin),
+    chatterbox_sock:send(Socket, RstStreamBin),
     {next_state,
      closed,
      Stream, 0}.

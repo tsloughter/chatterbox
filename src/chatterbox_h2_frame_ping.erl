@@ -1,6 +1,6 @@
--module(h2_frame_ping).
+-module(chatterbox_h2_frame_ping).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -15,7 +15,7 @@
           opaque_data :: binary()
 }).
 -type payload() :: #ping{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec format(payload()) -> iodata().
@@ -26,7 +26,7 @@ format(Payload) ->
 new(Bin) ->
     #ping{opaque_data=Bin}.
 
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_,
@@ -52,7 +52,7 @@ read_binary(_, _) ->
 to_binary(#ping{opaque_data=D}) ->
     D.
 
--spec ack(payload()) -> {h2_frame:header(), payload()}.
+-spec ack(payload()) -> {chatterbox_h2_frame:header(), payload()}.
 ack(Ping) ->
     {#frame_header{
         length = 8,

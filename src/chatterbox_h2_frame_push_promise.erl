@@ -1,6 +1,6 @@
--module(h2_frame_push_promise).
+-module(chatterbox_h2_frame_push_promise).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -18,7 +18,7 @@
           block_fragment :: binary()
 }).
 -type payload() :: #push_promise{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec block_fragment(payload()) -> binary().
@@ -40,7 +40,7 @@ new(StreamId, Bin) ->
        block_fragment=Bin
       }.
 
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_,
@@ -50,7 +50,7 @@ read_binary(_,
     {error, 0, ?PROTOCOL_ERROR, <<>>};
 read_binary(Bin, H=#frame_header{length=L}) ->
     <<PayloadBin:L/binary,Rem/binary>> = Bin,
-    Data = h2_padding:read_possibly_padded_payload(PayloadBin, H),
+    Data = chatterbox_h2_padding:read_possibly_padded_payload(PayloadBin, H),
     <<_R:1,Stream:31,BlockFragment/bits>> = Data,
     Payload = #push_promise{
                  promised_stream_id=Stream,
@@ -59,7 +59,7 @@ read_binary(Bin, H=#frame_header{length=L}) ->
     {ok, Payload, Rem}.
 
 -spec to_frame(pos_integer(), pos_integer(), hpack:headers(), hpack:context()) ->
-                      {{h2_frame:header(), payload()}, hpack:context()}.
+                      {{chatterbox_h2_frame:header(), payload()}, hpack:context()}.
 %% Maybe break this up into continuations like the data frame
 to_frame(StreamId, PStreamId, Headers, EncodeContext) ->
     {ok, {HeadersToSend, NewContext}} = hpack:encode(Headers, EncodeContext),
