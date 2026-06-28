@@ -43,11 +43,35 @@ send_invalid_connection_preface(Preface, _Config) ->
 
     ssl:send(Socket, Preface),
 
-    ssl:recv(Socket, 0, 5000),
-
-    {error, _} = ssl:send(Socket, <<"something else">>),
+    %% Server should reject the preface and close the socket. Drain
+    %% until we observe the close — on slow CI the close hasn't yet
+    %% propagated by the time we'd otherwise call ssl:send.
+    ok = wait_for_close(Socket),
+    %% First post-close send can spuriously succeed (TCP is full-duplex —
+    %% the FIN we observed only closed the server→client direction; the
+    %% kernel only learns our write side is dead once an RST comes back).
+    ok = wait_for_send_error(Socket),
     {error, _} = ssl:connection_information(Socket),
     ok.
+
+wait_for_close(Socket) ->
+    case ssl:recv(Socket, 0, 5000) of
+        {error, _} -> ok;
+        {ok, _}    -> wait_for_close(Socket)
+    end.
+
+wait_for_send_error(Socket) ->
+    wait_for_send_error(Socket, 50).
+
+wait_for_send_error(_Socket, 0) ->
+    {error, send_kept_succeeding};
+wait_for_send_error(Socket, N) ->
+    case ssl:send(Socket, <<"x">>) of
+        {error, _} -> ok;
+        ok ->
+            timer:sleep(100),
+            wait_for_send_error(Socket, N - 1)
+    end.
 
 sends_incomplete_connection_preface(_Config) ->
     {ok, Port} = application:get_env(chatterbox, port),
@@ -67,9 +91,11 @@ sends_incomplete_connection_preface(_Config) ->
 
     {ok, _ConnectionInfo} = ssl:connection_information(Socket),
 
-    %% There's a 5 second timeout before the socket will be closed
-    ssl:recv(Socket, 0, 5000),
-
-    {error, _} = ssl:send(Socket, <<"something else">>),
+    %% There's a 5 second timeout before the socket will be closed.
+    ok = wait_for_close(Socket),
+    %% First post-close send can spuriously succeed (TCP is full-duplex —
+    %% the FIN we observed only closed the server→client direction; the
+    %% kernel only learns our write side is dead once an RST comes back).
+    ok = wait_for_send_error(Socket),
     {error, _} = ssl:connection_information(Socket),
     ok.

@@ -1,6 +1,6 @@
--module(h2_frame_window_update).
+-module(chatterbox_h2_frame_window_update).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -16,7 +16,7 @@
           window_size_increment :: non_neg_integer()
          }).
 -type payload() :: #window_update{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec format(payload()) -> iodata().
@@ -29,7 +29,7 @@ new(Increment) ->
 
 
 -spec read_binary(Bin::binary(),
-                  Header::h2_frame:header()) ->
+                  Header::chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_,
@@ -51,12 +51,12 @@ read_binary(_, #frame_header{}=H) ->
     %is
     {error, H#frame_header.stream_id, ?FRAME_SIZE_ERROR, <<>>}.
 
--spec send(sock:socket(),
+-spec send(chatterbox_sock:socket(),
            non_neg_integer(),
            stream_id()) ->
                   ok.
 send(Socket, WindowSizeIncrement, StreamId) ->
-    sock:send(Socket, [
+    chatterbox_sock:send(Socket, [
                        <<4:24,?WINDOW_UPDATE:8,0:8,0:1,StreamId:31>>,
                        <<0:1,WindowSizeIncrement:31>>]).
 

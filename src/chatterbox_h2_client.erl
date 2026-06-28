@@ -1,4 +1,4 @@
--module(h2_client).
+-module(chatterbox_h2_client).
 -include("http2.hrl").
 
 %% Today's the day! We need to turn this gen_server into a gen_statem
@@ -112,9 +112,9 @@ start_link(Transport, Host, Port, SSLOptions, ConnectionSettings) ->
                http -> gen_tcp;
                https -> ssl
            end,
-    case h2_connection:start_client_link(NewT, Host, Port, SSLOptions, chatterbox:settings(client), ConnectionSettings) of
+    case chatterbox_h2_connection:start_client_link(NewT, Host, Port, SSLOptions, chatterbox:settings(client), ConnectionSettings) of
         {ok, Pid} ->
-            Streams = h2_connection:get_streams(Pid),
+            Streams = chatterbox_h2_connection:get_streams(Pid),
             {ok, Streams};
         Other ->
             Other
@@ -132,9 +132,9 @@ start(Transport, Host, Port, SSLOptions) ->
                http -> gen_tcp;
                https -> ssl
            end,
-    case h2_connection:start_client(NewT, Host, Port, SSLOptions, chatterbox:settings(client), #{}) of
+    case chatterbox_h2_connection:start_client(NewT, Host, Port, SSLOptions, chatterbox:settings(client), #{}) of
         {ok, Pid} ->
-            Streams = h2_connection:get_streams(Pid),
+            Streams = chatterbox_h2_connection:get_streams(Pid),
             {ok, Streams};
         Other ->
             Other
@@ -154,29 +154,29 @@ start(Transport, Host, Port, SSLOptions, ConnectionSettings) ->
                http -> gen_tcp;
                https -> ssl
            end,
-    case h2_connection:start_client(NewT, Host, Port, SSLOptions, chatterbox:settings(client), ConnectionSettings) of
+    case chatterbox_h2_connection:start_client(NewT, Host, Port, SSLOptions, chatterbox:settings(client), ConnectionSettings) of
         {ok, Pid} ->
-            Streams = h2_connection:get_streams(Pid),
+            Streams = chatterbox_h2_connection:get_streams(Pid),
             {ok, Streams};
         Other ->
             Other
     end.
 
 start_ssl_upgrade_link(Host, Port, InitialMessage, SSLOptions) ->
-    case h2_connection:start_ssl_upgrade_link(Host, Port, InitialMessage, SSLOptions, chatterbox:settings(client), #{}) of
+    case chatterbox_h2_connection:start_ssl_upgrade_link(Host, Port, InitialMessage, SSLOptions, chatterbox:settings(client), #{}) of
         {ok, Pid} ->
-            Streams = h2_connection:get_streams(Pid),
+            Streams = chatterbox_h2_connection:get_streams(Pid),
             {ok, Streams};
         Other ->
             Other
     end.
 
--spec stop(h2_stream_set:stream_set()) -> ok.
+-spec stop(chatterbox_h2_stream_set:stream_set()) -> ok.
 stop(Pid) ->
-    h2_connection:stop(Pid).
+    chatterbox_h2_connection:stop(Pid).
 
 -spec sync_request(CliPid, Headers, Body) -> Result when
-      CliPid :: h2_stream_set:stream_set(), Headers :: hpack:headers(), Body :: binary(),
+      CliPid :: chatterbox_h2_stream_set:stream_set(), Headers :: hpack:headers(), Body :: binary(),
       Result :: {ok, {hpack:headers(), iodata()}}
                  | {error, error_code() | timeout}.
 sync_request(CliPid, Headers, Body) ->
@@ -184,7 +184,7 @@ sync_request(CliPid, Headers, Body) ->
         {ok, StreamId} ->
             receive
                 {'END_STREAM', StreamId} ->
-                    h2_connection:get_response(CliPid, StreamId)
+                    chatterbox_h2_connection:get_response(CliPid, StreamId)
             after 5000 ->
                       {error, timeout}
             end;
@@ -193,10 +193,10 @@ sync_request(CliPid, Headers, Body) ->
     end.
 
 -spec send_request(CliPid, Headers, Body) -> Result when
-      CliPid :: h2_stream_set:stream_set(), Headers :: hpack:headers(), Body :: binary(),
+      CliPid :: chatterbox_h2_stream_set:stream_set(), Headers :: hpack:headers(), Body :: binary(),
       Result :: {ok, stream_id()} | {error, error_code()}.
 send_request(CliPid, Headers, Body) ->
-    case h2_connection:new_stream(CliPid, Headers, Body) of
+    case chatterbox_h2_connection:new_stream(CliPid, Headers, Body) of
         {error, _Code} = Err ->
             Err;
         {StreamId, _} ->
@@ -204,11 +204,11 @@ send_request(CliPid, Headers, Body) ->
     end.
 
 send_ping(CliPid) ->
-    h2_connection:send_ping(CliPid).
+    chatterbox_h2_connection:send_ping(CliPid).
 
--spec get_response(h2_stream_set:stream_set(), stream_id()) ->
+-spec get_response(chatterbox_h2_stream_set:stream_set(), stream_id()) ->
                           {ok, {hpack:headers(), iodata(), hpack:headers()}}
                            | not_ready
                            | {error, term()}.
 get_response(CliPid, StreamId) ->
-    h2_connection:get_response(CliPid, StreamId).
+    chatterbox_h2_connection:get_response(CliPid, StreamId).

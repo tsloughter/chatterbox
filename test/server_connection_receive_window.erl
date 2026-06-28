@@ -1,6 +1,6 @@
 -module(server_connection_receive_window).
 
--behaviour(h2_stream).
+-behaviour(chatterbox_h2_stream).
 
 -export([
          init/3,
@@ -21,7 +21,7 @@ init(_ConnPid, _StreamId, _Opts) ->
     {ok, #cb_static{}}.
 
 on_receive_headers(Headers, State) ->
-    h2_stream:send_window_update(65535),
+    chatterbox_h2_stream:send_window_update(65535),
     ct:pal("on_receive_headers(~p, ~p)", [Headers, State]),
     {ok, State#cb_static{req_headers=Headers}}.
 

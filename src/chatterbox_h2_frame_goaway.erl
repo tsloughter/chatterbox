@@ -1,6 +1,6 @@
--module(h2_frame_goaway).
+-module(chatterbox_h2_frame_goaway).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -18,7 +18,7 @@
           additional_debug_data = <<>> :: binary()
 }).
 -type payload() :: #goaway{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec error_code(payload()) -> error_code().
@@ -46,7 +46,7 @@ new(StreamId, ErrorCode, Reason) ->
       }.
 
 
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(Bin,

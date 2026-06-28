@@ -40,8 +40,8 @@
           send_settings = #settings{} :: settings(),
           encode_context = hpack:new_context() :: hpack:context(),
           next_available_stream_id = 1 :: pos_integer(),
-          incoming_frames = [] :: [h2_frame:frame()],
-          working_frame_header = undefined :: undefined | h2_frame:header(),
+          incoming_frames = [] :: [chatterbox_h2_frame:frame()],
+          working_frame_header = undefined :: undefined | chatterbox_h2_frame:header(),
           working_frame_payload = <<>> :: binary(),
           working_length = 0 :: non_neg_integer()
 }).
@@ -67,10 +67,10 @@ send_binary(Pid, Binary) ->
 %% desgined for testing error conditions by giving you the freedom to
 %% create bad sets of frames. This will problably only be exported
 %% ifdef(TEST)
--spec send_unaltered_frames(pid(), [h2_frame:frame()]) -> ok.
+-spec send_unaltered_frames(pid(), [chatterbox_h2_frame:frame()]) -> ok.
 send_unaltered_frames(Pid, Frames) ->
     ct:pal("sending frames ~p", [Frames]),
-    [send_binary(Pid, h2_frame:to_binary(F)) || F <- Frames],
+    [send_binary(Pid, chatterbox_h2_frame:to_binary(F)) || F <- Frames],
     ok.
 
 get_frames(Pid, StreamId) ->
@@ -134,16 +134,16 @@ init([]) ->
     Transport:send(Socket, ?PREFACE),
 
     %% Settings Handshake
-    {_SSH, ServerSettings} = h2_frame:read({Transport, Socket}, 1000),
-    h2_frame_settings:ack({Transport, Socket}),
+    {_SSH, ServerSettings} = chatterbox_h2_frame:read({Transport, Socket}, 1000),
+    chatterbox_h2_frame_settings:ack({Transport, Socket}),
 
     ClientSettings = chatterbox:settings(client),
-    ct:pal("[client] settings: ~p", [h2_settings:to_proplist(ClientSettings)]),
+    ct:pal("[client] settings: ~p", [chatterbox_h2_settings:to_proplist(ClientSettings)]),
 
-    BinToSend = h2_frame_settings:send(#settings{}, ClientSettings),
+    BinToSend = chatterbox_h2_frame_settings:send(#settings{}, ClientSettings),
     Transport:send(Socket, BinToSend),
 
-    {AH, _PAck} = h2_frame:read({Transport, Socket}, 1000),
+    {AH, _PAck} = chatterbox_h2_frame:read({Transport, Socket}, 1000),
     _ = ?IS_FLAG((AH#frame_header.flags), ?FLAG_ACK),
 
     case Transport of
@@ -154,7 +154,7 @@ init([]) ->
     end,
     {ok, #http2c_state{
             socket = {Transport, Socket},
-            send_settings = h2_frame_settings:overlay(#settings{}, ServerSettings)
+            send_settings = chatterbox_h2_frame_settings:overlay(#settings{}, ServerSettings)
            }}.
 
 %% Handling call messages
@@ -190,9 +190,9 @@ handle_cast(recv, #http2c_state{
                      incoming_frames = Frames
         }=State) ->
     RawHeader = Transport:recv(Socket, 9),
-    {FHeader, <<>>} = h2_frame:read_binary_frame_header(RawHeader),
+    {FHeader, <<>>} = chatterbox_h2_frame:read_binary_frame_header(RawHeader),
     RawBody = Transport:recv(Socket, FHeader#frame_header.length),
-    {ok, Payload, <<>>} = h2_frame:read_binary_payload(RawBody, FHeader),
+    {ok, Payload, <<>>} = chatterbox_h2_frame:read_binary_payload(RawBody, FHeader),
     F = {FHeader, Payload},
     ct:pal("http2c received ~p", [F]),
     gen_server:cast(self(), recv),
@@ -244,18 +244,18 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 -spec process_binary(
     binary(),
-    h2_frame:header() | undefined,
+    chatterbox_h2_frame:header() | undefined,
     binary(),
-    [h2_frame:frame()]) -> {[h2_frame:frame()], h2_frame:header() | undefined, binary() | undefined}.
+    [chatterbox_h2_frame:frame()]) -> {[chatterbox_h2_frame:frame()], chatterbox_h2_frame:header() | undefined, binary() | undefined}.
 %%OMG probably a monad
 process_binary(<<>>, undefined, <<>>, Frames) -> {Frames, undefined, <<>>};
 
 process_binary(<<HeaderBin:9/binary,Bin/binary>>, undefined, <<>>, Frames) ->
-    {Header, <<>>} = h2_frame:read_binary_frame_header(HeaderBin),
+    {Header, <<>>} = chatterbox_h2_frame:read_binary_frame_header(HeaderBin),
     L = Header#frame_header.length,
     case byte_size(Bin) >= L of
         true ->
-            {ok, Payload, Rem} = h2_frame:read_binary_payload(Bin, Header),
+            {ok, Payload, Rem} = chatterbox_h2_frame:read_binary_payload(Bin, Header),
             process_binary(Rem, undefined, <<>>, Frames ++ [{Header,Payload}]);
         false ->
             {Frames, Header, Bin}
@@ -264,7 +264,7 @@ process_binary(Bin, Header, <<>>, Frames) ->
     L = Header#frame_header.length,
     case byte_size(Bin) >= L of
         true ->
-            {ok, Payload, Rem} = h2_frame:read_binary_payload(Bin, Header),
+            {ok, Payload, Rem} = chatterbox_h2_frame:read_binary_payload(Bin, Header),
             process_binary(Rem, undefined, <<>>, Frames ++ [{Header,Payload}]);
         false ->
             {Frames, Header, Bin}

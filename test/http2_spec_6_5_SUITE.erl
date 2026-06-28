@@ -35,7 +35,7 @@ sends_invalid_push_setting(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 sends_unknown_settings_frame(_Config) ->
@@ -64,7 +64,7 @@ sends_value_above_max_flow_control_window_size(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?FLOW_CONTROL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?FLOW_CONTROL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 sends_max_frame_size_too_small(_Config) ->
@@ -78,7 +78,7 @@ sends_max_frame_size_too_small(_Config) ->
         ?assertEqual(1, (length(Resp))),
         [{GoAwayH, GoAway}] = Resp,
         ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-        ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+        ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
         ok.
 
 sends_max_frame_size_too_big(_Config) ->
@@ -92,5 +92,5 @@ sends_max_frame_size_too_big(_Config) ->
         ?assertEqual(1, (length(Resp))),
         [{GoAwayH, GoAway}] = Resp,
         ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-        ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+        ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
         ok.

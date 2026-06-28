@@ -40,11 +40,11 @@ basic_continuation(_Config) ->
     Frames =
         [
          {#frame_header{length=8,type=?HEADERS,flags=?FLAG_END_STREAM,stream_id=3},
-          h2_frame_headers:new(H1)},
+          chatterbox_h2_frame_headers:new(H1)},
          {#frame_header{length=8,type=?CONTINUATION,stream_id=3},
-          h2_frame_continuation:new(H2)},
+          chatterbox_h2_frame_continuation:new(H2)},
          {#frame_header{length=8,type=?CONTINUATION,flags=?FLAG_END_HEADERS,stream_id=3},
-          h2_frame_continuation:new(H3)}
+          chatterbox_h2_frame_continuation:new(H3)}
         ],
     http2c:send_unaltered_frames(Client, Frames),
     Resp = http2c:wait_for_n_frames(Client, 3, 2),
@@ -73,11 +73,11 @@ basic_continuation_end_stream_first(_Config) ->
     Frames =
         [
          {#frame_header{length=8,type=?HEADERS,flags=?FLAG_END_STREAM,stream_id=3},
-          h2_frame_headers:new(H1)},
+          chatterbox_h2_frame_headers:new(H1)},
          {#frame_header{length=8,type=?CONTINUATION,stream_id=3},
-          h2_frame_continuation:new(H2)},
+          chatterbox_h2_frame_continuation:new(H2)},
          {#frame_header{length=8,type=?CONTINUATION,flags=?FLAG_END_HEADERS,stream_id=3},
-          h2_frame_continuation:new(H3)}
+          chatterbox_h2_frame_continuation:new(H3)}
         ],
     http2c:send_unaltered_frames(Client, Frames),
 
@@ -107,13 +107,13 @@ bad_frame_wrong_type_between_continuations(_Config) ->
     Frames =
         [
          {#frame_header{length=8,type=?HEADERS,stream_id=3},
-          h2_frame_headers:new(H1)},
+          chatterbox_h2_frame_headers:new(H1)},
          {#frame_header{length=8,type=?CONTINUATION,stream_id=3},
-          h2_frame_continuation:new(H2)},
+          chatterbox_h2_frame_continuation:new(H2)},
          {#frame_header{length=8,type=?HEADERS,stream_id=3},
-          h2_frame_headers:new(H1)},
+          chatterbox_h2_frame_headers:new(H1)},
          {#frame_header{length=8,type=?CONTINUATION,flags=?FLAG_END_HEADERS,stream_id=3},
-          h2_frame_continuation:new(H3)}
+          chatterbox_h2_frame_continuation:new(H3)}
         ],
     http2c:send_unaltered_frames(Client, Frames),
 
@@ -124,7 +124,7 @@ bad_frame_wrong_type_between_continuations(_Config) ->
     1 = length(Resp2),
     [{GoAwayH, GoAway}] = Resp2,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 bad_frame_wrong_stream_between_continuations(_Config) ->
@@ -148,13 +148,13 @@ bad_frame_wrong_stream_between_continuations(_Config) ->
     Frames =
         [
          {#frame_header{length=8,type=?HEADERS,stream_id=3},
-          h2_frame_headers:new(H1)},
+          chatterbox_h2_frame_headers:new(H1)},
          {#frame_header{length=8,type=?CONTINUATION,stream_id=3},
-          h2_frame_continuation:new(H2)},
+          chatterbox_h2_frame_continuation:new(H2)},
          {#frame_header{length=8,type=?HEADERS,stream_id=5},
-          h2_frame_headers:new(H1)},
+          chatterbox_h2_frame_headers:new(H1)},
          {#frame_header{length=8,type=?CONTINUATION,flags=?FLAG_END_HEADERS,stream_id=3},
-          h2_frame_continuation:new(H3)}
+          chatterbox_h2_frame_continuation:new(H3)}
         ],
     http2c:send_unaltered_frames(Client, Frames),
 
@@ -167,5 +167,5 @@ bad_frame_wrong_stream_between_continuations(_Config) ->
     1 = length(Resp2),
     [{GoAwayH, GoAway}] = Resp2,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?PROTOCOL_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?PROTOCOL_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.

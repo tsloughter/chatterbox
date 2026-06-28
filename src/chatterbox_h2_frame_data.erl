@@ -1,6 +1,6 @@
--module(h2_frame_data).
+-module(chatterbox_h2_frame_data).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export([
          format/1,
@@ -15,7 +15,7 @@
     data :: iodata()
   }).
 -type payload() :: #data{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec data(payload()) -> iodata().
@@ -37,7 +37,7 @@ format(Payload) ->
 new(Data) ->
     #data{data=Data}.
 
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_, #frame_header{stream_id=0}) ->
@@ -46,14 +46,14 @@ read_binary(Bin, _H=#frame_header{length=0}) ->
     {ok, #data{data= <<>>}, Bin};
 read_binary(Bin, H=#frame_header{length=L}) ->
     <<PayloadBin:L/binary,Rem/bits>> = Bin,
-    case h2_padding:read_possibly_padded_payload(PayloadBin, H) of
+    case chatterbox_h2_padding:read_possibly_padded_payload(PayloadBin, H) of
         {error, Code} ->
             {error, Code};
         Data ->
             {ok, #data{data=Data}, Rem}
     end.
 
--spec to_frames(stream_id(), iodata(), settings()) -> [h2_frame:frame()].
+-spec to_frames(stream_id(), iodata(), settings()) -> [chatterbox_h2_frame:frame()].
 to_frames(StreamId, IOList, Settings)
   when is_list(IOList) ->
     to_frames(StreamId, iolist_to_binary(IOList), Settings);

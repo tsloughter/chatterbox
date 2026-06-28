@@ -1,6 +1,6 @@
--module(h2_frame_headers).
+-module(chatterbox_h2_frame_headers).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -15,11 +15,11 @@
 
 -record(headers,
         {
-          priority = undefined :: h2_frame_priority:payload() | undefined,
+          priority = undefined :: chatterbox_h2_frame_priority:payload() | undefined,
           block_fragment :: binary()
         }).
 -type payload() :: #headers{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec format(payload()) -> iodata().
@@ -30,7 +30,7 @@ format(Payload) ->
 new(BlockFragment) ->
     #headers{block_fragment=BlockFragment}.
 
--spec new(h2_frame_priority:payload(),
+-spec new(chatterbox_h2_frame_priority:payload(),
           binary()) ->
                  payload().
 new(Priority, BlockFragment) ->
@@ -40,7 +40,7 @@ new(Priority, BlockFragment) ->
       }.
 
 -spec read_binary(binary(),
-                  h2_frame:header()) ->
+                  chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_,
@@ -50,15 +50,15 @@ read_binary(_,
     {error, 0, ?PROTOCOL_ERROR, <<>>};
 read_binary(Bin, H = #frame_header{length=L}) ->
     <<PayloadBin:L/binary,Rem/bits>> = Bin,
-    case h2_padding:read_possibly_padded_payload(PayloadBin, H) of
+    case chatterbox_h2_padding:read_possibly_padded_payload(PayloadBin, H) of
         {error, Code} ->
             {error, 0, Code, Rem};
         Data ->
             {Priority, PSID, HeaderFragment} =
                 case is_priority(H) of
                     true ->
-                        {P, PRem} = h2_frame_priority:read_priority(Data),
-                        PStream = h2_frame_priority:stream_id(P),
+                        {P, PRem} = chatterbox_h2_frame_priority:read_priority(Data),
+                        PStream = chatterbox_h2_frame_priority:stream_id(P),
                         {P, PStream, PRem};
                     false ->
                         {undefined, undefined, Data}
@@ -87,7 +87,7 @@ is_priority(_) ->
                 EncodeContext :: hpack:context(),
                 MaxFrameSize  :: pos_integer(),
                 EndStream     :: boolean()) ->
-                       {[h2_frame:frame()], hpack:context()}.
+                       {[chatterbox_h2_frame:frame()], hpack:context()}.
 to_frames(StreamId, Headers, EncodeContext, MaxFrameSize, EndStream) ->
     {ok, {HeadersBin, NewContext}} = hpack:encode(Headers, EncodeContext),
 
@@ -107,21 +107,21 @@ to_binary(#headers{
         undefined ->
             BF;
         _ ->
-            [h2_frame_priority:to_binary(P), BF]
+            [chatterbox_h2_frame_priority:to_binary(P), BF]
     end.
 
--spec from_frames([h2_frame:frame()]) -> binary().
+-spec from_frames([chatterbox_h2_frame:frame()]) -> binary().
 from_frames([{#frame_header{type=?HEADERS},#headers{block_fragment=BF}}|Continuations])->
     from_frames(Continuations, BF);
 from_frames([{#frame_header{type=?PUSH_PROMISE},PP}|Continuations])->
-    BF = h2_frame_push_promise:block_fragment(PP),
+    BF = chatterbox_h2_frame_push_promise:block_fragment(PP),
     from_frames(Continuations, BF).
 
--spec from_frames([h2_frame:frame()], binary()) -> binary().
+-spec from_frames([chatterbox_h2_frame:frame()], binary()) -> binary().
 from_frames([], Acc) ->
     Acc;
 from_frames([{#frame_header{type=?CONTINUATION},Cont}|Continuations], Acc) ->
-    BF = h2_frame_continuation:block_fragment(Cont),
+    BF = chatterbox_h2_frame_continuation:block_fragment(Cont),
     from_frames(Continuations, <<Acc/binary,BF/binary>>).
 
 -spec split(Binary::binary(),
@@ -149,7 +149,7 @@ split(Binary, MaxFrameSize, Acc) ->
 -spec build_frames(StreamId :: stream_id(),
                    Chunks::[binary()],
                    EndStream::boolean()) ->
-                          [h2_frame:frame()].
+                          [chatterbox_h2_frame:frame()].
 build_frames(StreamId, [FirstChunk|Rest], EndStream) ->
     Flag = case EndStream of
                true ->
@@ -177,8 +177,8 @@ build_frames(StreamId, [FirstChunk|Rest], EndStream) ->
 
 -spec build_frames_(StreamId::stream_id(),
                     Chunks::[binary()],
-                    Acc::[h2_frame:frame()])->
-                           [h2_frame:frame()].
+                    Acc::[chatterbox_h2_frame:frame()])->
+                           [chatterbox_h2_frame:frame()].
 build_frames_(_StreamId, [], Acc) ->
     Acc;
 build_frames_(StreamId, [NextChunk|Rest], Acc) ->
@@ -189,6 +189,6 @@ build_frames_(StreamId, [NextChunk|Rest], Acc) ->
          flags=0,
          length=byte_size(NextChunk)
         },
-      h2_frame_continuation:new(NextChunk)
+      chatterbox_h2_frame_continuation:new(NextChunk)
      },
     build_frames_(StreamId, Rest, [NextFrame|Acc]).

@@ -1,6 +1,6 @@
--module(h2_frame_priority).
+-module(chatterbox_h2_frame_priority).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -18,7 +18,7 @@
     weight = 0 :: non_neg_integer()
   }).
 -type payload() :: #priority{}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 -export_type([payload/0, frame/0]).
 
 -spec format(payload()) -> iodata().
@@ -33,7 +33,7 @@ new(Exclusive, StreamId, Weight) ->
        weight=Weight
       }.
 
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(_,

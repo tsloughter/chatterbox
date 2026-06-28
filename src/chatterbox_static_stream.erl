@@ -2,7 +2,7 @@
 
 -include("http2.hrl").
 
--behaviour(h2_stream).
+-behaviour(chatterbox_h2_stream).
 
 -export([
          init/3,
@@ -16,7 +16,7 @@
 
 -record(cb_static, {
         req_headers=[],
-        connection_pid :: h2_stream_set:stream_set(),
+        connection_pid :: chatterbox_h2_stream_set:stream_set(),
         stream_id :: stream_id()
           }).
 
@@ -74,10 +74,10 @@ on_end_stream(State=#cb_static{connection_pid=ConnPid,
                                   ],
                 case Method of
                     <<"HEAD">> ->
-                        h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders, [{send_end_stream, true}]);
+                        chatterbox_h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders, [{send_end_stream, true}]);
                     _ ->
-                        h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
-                        h2_connection:send_body(ConnPid, StreamId, <<"No soup for you!">>)
+                        chatterbox_h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
+                        chatterbox_h2_connection:send_body(ConnPid, StreamId, <<"No soup for you!">>)
                 end;
             {true, false} ->
                 Ext = filename:extension(File),
@@ -98,13 +98,13 @@ on_end_stream(State=#cb_static{connection_pid=ConnPid,
                                   ],
                 case Method of
                     <<"HEAD">> ->
-                        h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders, [{send_end_stream, true}]);
+                        chatterbox_h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders, [{send_end_stream, true}]);
                     _ ->
-                        h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
-                        h2_connection:send_body(ConnPid, StreamId, Data)
+                        chatterbox_h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
+                        chatterbox_h2_connection:send_body(ConnPid, StreamId, Data)
                 end,
 
-                case {MimeType, h2_connection:is_push(ConnPid)} of
+                case {MimeType, chatterbox_h2_connection:is_push(ConnPid)} of
                     {<<"text/html">>, true} ->
                         %% Search Data for resources to push
                         {ok, RE} = re:compile("<link rel=\"stylesheet\" href=\"([^\"]*)|<script src=\"([^\"]*)|src: '([^']*)"),
@@ -117,7 +117,7 @@ on_end_stream(State=#cb_static{connection_pid=ConnPid,
                         lists:foldl(
                           fun(R, Acc) ->
                                   PHeaders = generate_push_promise_headers(Headers, <<$/,R/binary>>),
-                                  {NewStreamId, _} = h2_connection:send_promise(ConnPid, StreamId, PHeaders),
+                                  {NewStreamId, _} = chatterbox_h2_connection:send_promise(ConnPid, StreamId, PHeaders),
                                   [{NewStreamId, PHeaders}|Acc]
                           end,
                           [],
@@ -147,10 +147,10 @@ on_end_stream(State=#cb_static{connection_pid=ConnPid,
                               ],
                 case Method of
                     <<"HEAD">> ->
-                        h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders, [{send_end_stream, true}]);
+                        chatterbox_h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders, [{send_end_stream, true}]);
                     _ ->
-                        h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
-                        h2_connection:send_body(ConnPid, StreamId, <<"No soup for you!">>)
+                        chatterbox_h2_connection:send_headers(ConnPid, StreamId, ResponseHeaders),
+                        chatterbox_h2_connection:send_body(ConnPid, StreamId, <<"No soup for you!">>)
                 end
         end,
 

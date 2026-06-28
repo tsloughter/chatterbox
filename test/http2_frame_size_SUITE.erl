@@ -42,7 +42,7 @@ send_wrong_size(Type, _Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?FRAME_SIZE_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?FRAME_SIZE_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 frame_too_big(_Config) ->
@@ -54,7 +54,7 @@ frame_too_big(_Config) ->
              type=?HEADERS,
              flags=?FLAG_END_HEADERS,
              stream_id=3},
-          h2_frame_headers:new(<<1:131136>>)}
+          chatterbox_h2_frame_headers:new(<<1:131136>>)}
     ],
     http2c:send_unaltered_frames(Client, Frames),
 
@@ -63,7 +63,7 @@ frame_too_big(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?FRAME_SIZE_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?FRAME_SIZE_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.
 
 euc(_Config) ->
@@ -93,11 +93,11 @@ euc(_Config) ->
 
     Frames = [
               {#frame_header{length=byte_size(HeadersBin1),type=?HEADERS,flags=?FLAG_END_HEADERS,stream_id=3},
-               h2_frame_headers:new(HeadersBin1)},
+               chatterbox_h2_frame_headers:new(HeadersBin1)},
               {#frame_header{length=byte_size(HeadersBin2),type=?HEADERS,flags=?FLAG_END_HEADERS,stream_id=5},
-               h2_frame_headers:new(HeadersBin2)},
+               chatterbox_h2_frame_headers:new(HeadersBin2)},
               {#frame_header{length=byte_size(HeadersBin3),type=?HEADERS,flags=?FLAG_END_HEADERS,stream_id=7},
-               h2_frame_headers:new(HeadersBin3)}
+               chatterbox_h2_frame_headers:new(HeadersBin3)}
     ],
 
     http2c:send_unaltered_frames(Client, Frames),

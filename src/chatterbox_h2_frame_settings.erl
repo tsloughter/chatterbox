@@ -1,6 +1,6 @@
--module(h2_frame_settings).
+-module(chatterbox_h2_frame_settings).
 -include("http2.hrl").
--behaviour(h2_frame).
+-behaviour(chatterbox_h2_frame).
 
 -export(
    [
@@ -17,7 +17,7 @@
 
 %%TODO
 -type payload() :: #settings{} | {settings, proplist()}.
--type frame() :: {h2_frame:header(), payload()}.
+-type frame() :: {chatterbox_h2_frame:header(), payload()}.
 
 -type name() :: binary().
 -type property() :: {name(), any()}.
@@ -64,7 +64,7 @@ format({settings, PList}) ->
               PList),
     io_lib:format("~p", [L]).
 
--spec read_binary(binary(), h2_frame:header()) ->
+-spec read_binary(binary(), chatterbox_h2_frame:header()) ->
                          {ok, payload(), binary()}
                        | {error, stream_id(), error_code(), binary()}.
 read_binary(Bin,
@@ -132,7 +132,7 @@ overlay_(_OriginalS, S, {settings, []}) ->
 
 -spec send(payload()) -> binary().
 send(Settings) ->
-    List = h2_settings:to_proplist(Settings),
+    List = chatterbox_h2_settings:to_proplist(Settings),
     Payload = make_payload(List),
     L = size(Payload),
     Header = <<L:24,?SETTINGS:8,16#0:8,0:1,0:31>>,
@@ -140,7 +140,7 @@ send(Settings) ->
 
 -spec send(payload(), payload()) -> binary().
 send(PrevSettings, NewSettings) ->
-    Diff = h2_settings:diff(PrevSettings, NewSettings),
+    Diff = chatterbox_h2_settings:diff(PrevSettings, NewSettings),
     Payload = make_payload(Diff),
     L = size(Payload),
     Header = <<L:24,?SETTINGS:8,16#0:8,0:1,0:31>>,

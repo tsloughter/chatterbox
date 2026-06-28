@@ -32,5 +32,5 @@ sends_invalid_header_block_fragment(_Config) ->
     ?assertEqual(1, (length(Resp))),
     [{GoAwayH, GoAway}] = Resp,
     ?assertEqual(?GOAWAY, (GoAwayH#frame_header.type)),
-    ?assertEqual(?COMPRESSION_ERROR, (h2_frame_goaway:error_code(GoAway))),
+    ?assertEqual(?COMPRESSION_ERROR, (chatterbox_h2_frame_goaway:error_code(GoAway))),
     ok.

@@ -1,4 +1,4 @@
--module(h2_frame).
+-module(chatterbox_h2_frame).
 
 -include("http2.hrl").
 
@@ -17,16 +17,16 @@
          header_to_binary/1
 ]).
 
--type payload() :: h2_frame_data:payload()
-                 | h2_frame_headers:payload()
-                 | h2_frame_priority:payload()
-                 | h2_frame_rst_stream:payload()
-                 | h2_frame_settings:payload()
-                 | h2_frame_push_promise:payload()
-                 | h2_frame_ping:payload()
-                 | h2_frame_goaway:payload()
-                 | h2_frame_window_update:payload()
-                 | h2_frame_continuation:payload().
+-type payload() :: chatterbox_h2_frame_data:payload()
+                 | chatterbox_h2_frame_headers:payload()
+                 | chatterbox_h2_frame_priority:payload()
+                 | chatterbox_h2_frame_rst_stream:payload()
+                 | chatterbox_h2_frame_settings:payload()
+                 | chatterbox_h2_frame_push_promise:payload()
+                 | chatterbox_h2_frame_ping:payload()
+                 | chatterbox_h2_frame_goaway:payload()
+                 | chatterbox_h2_frame_window_update:payload()
+                 | chatterbox_h2_frame_continuation:payload().
 
 -type header() :: #frame_header{}.
 -type frame() :: {header(),
@@ -159,25 +159,25 @@ read_payload({Transport, Socket}, Header=#frame_header{length=L}, Timeout) ->
                                | {error, error_code()}
                                | {error, stream_id(), error_code(), binary()}.
 read_binary_payload(Bin, Header = #frame_header{type=?DATA}) ->
-    h2_frame_data:read_binary(Bin, Header);
+    chatterbox_h2_frame_data:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?HEADERS}) ->
-    h2_frame_headers:read_binary(Bin, Header);
+    chatterbox_h2_frame_headers:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?PRIORITY}) ->
-    h2_frame_priority:read_binary(Bin, Header);
+    chatterbox_h2_frame_priority:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?RST_STREAM}) ->
-    h2_frame_rst_stream:read_binary(Bin, Header);
+    chatterbox_h2_frame_rst_stream:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?SETTINGS}) ->
-    h2_frame_settings:read_binary(Bin, Header);
+    chatterbox_h2_frame_settings:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?PUSH_PROMISE}) ->
-    h2_frame_push_promise:read_binary(Bin, Header);
+    chatterbox_h2_frame_push_promise:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?PING}) ->
-    h2_frame_ping:read_binary(Bin, Header);
+    chatterbox_h2_frame_ping:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?GOAWAY}) ->
-    h2_frame_goaway:read_binary(Bin, Header);
+    chatterbox_h2_frame_goaway:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?WINDOW_UPDATE}) ->
-    h2_frame_window_update:read_binary(Bin, Header);
+    chatterbox_h2_frame_window_update:read_binary(Bin, Header);
 read_binary_payload(Bin, Header = #frame_header{type=?CONTINUATION}) ->
-    h2_frame_continuation:read_binary(Bin, Header);
+    chatterbox_h2_frame_continuation:read_binary(Bin, Header);
 read_binary_payload(Bin, Header) ->
     read_unsupported_frame_binary(Bin, Header).
 
@@ -191,25 +191,25 @@ read_unsupported_frame_binary(Bin,
 
 -spec format_payload(frame()) -> iodata().
 format_payload({#frame_header{type=?DATA}, P}) ->
-    h2_frame_data:format(P);
+    chatterbox_h2_frame_data:format(P);
 format_payload({#frame_header{type=?HEADERS}, P}) ->
-    h2_frame_headers:format(P);
+    chatterbox_h2_frame_headers:format(P);
 format_payload({#frame_header{type=?PRIORITY}, P}) ->
-    h2_frame_priority:format(P);
+    chatterbox_h2_frame_priority:format(P);
 format_payload({#frame_header{type=?RST_STREAM}, P}) ->
-    h2_frame_rst_stream:format(P);
+    chatterbox_h2_frame_rst_stream:format(P);
 format_payload({#frame_header{type=?SETTINGS}, P}) ->
-    h2_frame_settings:format(P);
+    chatterbox_h2_frame_settings:format(P);
 format_payload({#frame_header{type=?PUSH_PROMISE}, P}) ->
-    h2_frame_push_promise:format(P);
+    chatterbox_h2_frame_push_promise:format(P);
 format_payload({#frame_header{type=?PING}, P}) ->
-    h2_frame_ping:format(P);
+    chatterbox_h2_frame_ping:format(P);
 format_payload({#frame_header{type=?GOAWAY}, P}) ->
-    h2_frame_goaway:format(P);
+    chatterbox_h2_frame_goaway:format(P);
 format_payload({#frame_header{type=?WINDOW_UPDATE}, P}) ->
-    h2_frame_window_update:format(P);
+    chatterbox_h2_frame_window_update:format(P);
 format_payload({#frame_header{type=?CONTINUATION}, P}) ->
-    h2_frame_continuation:format(P);
+    chatterbox_h2_frame_continuation:format(P);
 format_payload({_, _P}) ->
     "Unsupported Frame".
 
@@ -246,16 +246,16 @@ payload_to_binary(P) ->
 
     Bin =
         case Type of
-            ?DATA -> h2_frame_data:to_binary(P);
-            ?HEADERS -> h2_frame_headers:to_binary(P);
-            ?PRIORITY -> h2_frame_priority:to_binary(P);
-            ?RST_STREAM -> h2_frame_rst_stream:to_binary(P);
-            ?SETTINGS -> h2_frame_settings:to_binary(P);
-            ?PUSH_PROMISE -> h2_frame_push_promise:to_binary(P);
-            ?PING -> h2_frame_ping:to_binary(P);
-            ?GOAWAY -> h2_frame_goaway:to_binary(P);
-            ?WINDOW_UPDATE -> h2_frame_window_update:to_binary(P);
-            ?CONTINUATION -> h2_frame_continuation:to_binary(P)
+            ?DATA -> chatterbox_h2_frame_data:to_binary(P);
+            ?HEADERS -> chatterbox_h2_frame_headers:to_binary(P);
+            ?PRIORITY -> chatterbox_h2_frame_priority:to_binary(P);
+            ?RST_STREAM -> chatterbox_h2_frame_rst_stream:to_binary(P);
+            ?SETTINGS -> chatterbox_h2_frame_settings:to_binary(P);
+            ?PUSH_PROMISE -> chatterbox_h2_frame_push_promise:to_binary(P);
+            ?PING -> chatterbox_h2_frame_ping:to_binary(P);
+            ?GOAWAY -> chatterbox_h2_frame_goaway:to_binary(P);
+            ?WINDOW_UPDATE -> chatterbox_h2_frame_window_update:to_binary(P);
+            ?CONTINUATION -> chatterbox_h2_frame_continuation:to_binary(P)
         end,
     {Type, Bin}.
 
