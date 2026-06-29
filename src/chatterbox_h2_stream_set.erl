@@ -17,6 +17,7 @@
 -define(MY_ACTIVE_COUNT, 5).
 -define(THEIR_ACTIVE_COUNT, 6).
 -define(LAST_SEND_ALL_WE_CAN_STREAM_ID, 7).
+-define(SEND_ROUND_ROBIN_END, 8).
 
 -record(
    stream_set,
@@ -24,13 +25,13 @@
      %% Type determines which streams are mine, and which are theirs
      type :: client | server,
 
-     atomics = atomics:new(7, []),
+     atomics = atomics:new(8, []),
 
      socket :: chatterbox_sock:socket(),
 
      connection :: pid(),
 
-     table = ets:new(?MODULE, [public, {keypos, 2}, {read_concurrency, true}]) :: ets:tab(),
+     table = ets:new(?MODULE, [ordered_set, public, {keypos, 2}, {read_concurrency, true}]) :: ets:tab(),
      %% Streams initiated by this peer
      %% mine :: peer_subset(),
      %% Streams initiated by the other peer
@@ -316,6 +317,7 @@ new_stream(
                                   StreamId,
                                   StreamSet,
                                   self(),
+                                  NotifyPid,
                                   CBMod,
                                   CBOpts
                                  );
@@ -324,6 +326,7 @@ new_stream(
                                   StreamId,
                                   StreamSet,
                                   StreamSet#stream_set.connection,
+                                  NotifyPid,
                                   CBMod,
                                   CBOpts
                                  )
@@ -379,7 +382,7 @@ get_peer_settings(StreamSet) ->
     try hd(ets:lookup(StreamSet#stream_set.table, peer_settings)) of
         #connection_settings{settings=locked} ->
             timer:sleep(1),
-            get_self_settings(StreamSet);
+            get_peer_settings(StreamSet);
         #connection_settings{settings=Settings} ->
             Settings
     catch error:badarg ->
@@ -848,11 +851,10 @@ update_my_max_active(NewMax, Streams) ->
 send_all_we_can(Streams) ->
     PeerSettings = get_peer_settings(Streams),
     MaxFrameSize = PeerSettings#settings.max_frame_size,
-    
-    %% TODO be smarter about where we start off (remember where we last stopped, etc),
-    %% inspect priorities, etc
+
     Last = atomics:get(Streams#stream_set.atomics, ?LAST_SEND_ALL_WE_CAN_STREAM_ID),
-    case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id > Last andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
+    End = atomics:get(Streams#stream_set.atomics, ?SEND_ROUND_ROBIN_END),
+    case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id > Last andalso Id < End andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
         '$end_of_table' ->
             ok;
         Res ->
@@ -864,9 +866,13 @@ send_all_we_can(Streams) ->
 
     case Last == Last2 of
         true ->
-            %% we didn't run out of send window, so now traverse the
-            %% streams we have not inspected yet
-            case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id =< Last andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
+            %% we didn't run out of send window, so now wrap around the round robin and start from 0 again
+            TheirNext = atomics:get(Streams#stream_set.atomics, ?THEIR_NEXT_AVAILABLE_STREAM_ID),
+            MyNext = atomics:get(Streams#stream_set.atomics, ?MY_NEXT_AVAILABLE_STREAM_ID),
+            NewEnd = max(TheirNext, MyNext),
+            atomics:put(Streams#stream_set.atomics, ?SEND_ROUND_ROBIN_END, NewEnd),
+            atomics:put(Streams#stream_set.atomics, ?LAST_SEND_ALL_WE_CAN_STREAM_ID, 0),
+            case ets:select(Streams#stream_set.table, ets:fun2ms(fun(AS=#active_stream{id=Id, queued_data=D, trailers=T}) when Id < NewEnd andalso ((not is_atom(D)) orelse T /= undefined)  -> AS end), 20) of
                 '$end_of_table' ->
                     ok;
                 Res2 ->
@@ -892,7 +898,8 @@ send_what_we_can(StreamId, StreamFun, Streams) ->
     MaxFrameSize = PeerSettings#settings.max_frame_size,
 
 
-    NewConnSendWindowSize = s_send_what_we_can(MaxFrameSize,
+    {_, NewConnSendWindowSize} =
+    s_send_what_we_can(MaxFrameSize,
                        StreamId,
                        StreamFun,
                        Streams),
@@ -912,15 +919,15 @@ c_send_what_we_can(MFS, {[], CC}, StreamSet) ->
             c_send_what_we_can(MFS, Res, StreamSet)
     end;
 c_send_what_we_can(MFS, {[S|Streams], CC}, StreamSet) ->
-    NewSWS = s_send_what_we_can(MFS, stream_id(S), fun(Stream) -> Stream end, StreamSet),
-    case NewSWS =< 0 of
-        true ->
-            %% If we hit =< 0, done
-            %% track where we stopped
+    case s_send_what_we_can(MFS, stream_id(S), fun(Stream) -> Stream end, StreamSet) of
+        {out_of_window, NewSWS} ->
+            %% We did not send this stream, we're done. (NewSWS was rewinded)
+            %% Track that we stopped on this stream, so we can continue on the next,
+            %% when we get more window.
             atomics:put(StreamSet#stream_set.atomics, ?LAST_SEND_ALL_WE_CAN_STREAM_ID, stream_id(S)),
             NewSWS;
-        false ->
-            %% Otherwise, try sending on the next stream
+        {in_window, _NewSWS} ->
+            %% try sending on the next stream,
             c_send_what_we_can(MFS, {Streams, CC}, StreamSet)
     end.
 
@@ -929,7 +936,7 @@ c_send_what_we_can(MFS, {[S|Streams], CC}, StreamSet) ->
                          StreamId :: stream_id(),
                          StreamFun :: fun((stream()) -> stream()),
                          StreamSet :: stream_set()) ->
-                                integer().
+                                {in_window | out_of_window, integer()}.
 s_send_what_we_can(MFS, StreamId, StreamFun0, Streams) ->
     StreamFun = 
     fun(#active_stream{queued_data=Data, trailers=undefined}=Stream) when is_atom(Data) ->
@@ -1039,7 +1046,7 @@ s_send_what_we_can(MFS, StreamId, StreamFun0, Streams) ->
     case update(StreamId, fun(Stream0) -> StreamFun(StreamFun0(Stream0)) end, Streams) of
         ok ->
             NewSWS = socket_send_window_size(Streams),
-            NewSWS;
+            {in_window, NewSWS};
         {ok, {BytesSent, OldStream, Actions}} ->
             NewSWS = decrement_socket_send_window(BytesSent, Streams),
             case NewSWS < 0 of
@@ -1048,11 +1055,12 @@ s_send_what_we_can(MFS, StreamId, StreamFun0, Streams) ->
                     %% we delved too deep, and too greedily
                     %% try to roll things back
                     ets:insert(Streams#stream_set.table, StreamFun0(OldStream)),
-                    increment_socket_send_window(BytesSent, Streams);
+                    RestoredSWS = increment_socket_send_window(BytesSent, Streams),
+                    {out_of_window, RestoredSWS};
                 false ->
                     %% ok, its now safe to apply these actions
                     apply_stream_actions(Actions),
-                    NewSWS
+                    {in_window, NewSWS}
             end
     end.
 

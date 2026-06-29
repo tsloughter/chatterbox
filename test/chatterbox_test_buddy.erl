@@ -72,13 +72,17 @@ start(Config) ->
 
     ct:pal("Started: ~p", [List]),
 
+    ProtocolCallbackOpts = proplists:get_value(protocol_callback_opts, Config,
+                                              []),
+    ProtocolCallbackMod = proplists:get_value(protocol_callback_mod, Config,
+                                              chatterbox_ranch_protocol),
     {ok, _RanchPid} =
         ranch:start_listener(
           chatterbox_ranch_protocol,
           ranch_ssl,
           #{ socket_opts => [{alpn_preferred_protocols, [<<"h2">>]},{port, 8081}|proplists:get_value(ssl_options, Settings)] },
-          chatterbox_ranch_protocol,
-          []),
+          ProtocolCallbackMod,
+          ProtocolCallbackOpts),
     Config.
 
 ssl(SSLBool, Config) ->

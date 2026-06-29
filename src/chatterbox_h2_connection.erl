@@ -341,7 +341,7 @@ send_request(Streams, Headers, Body) ->
 
 -spec send_request(chatterbox_h2_stream_set:stream_set(), hpack:headers(), binary(), atom(), list()) -> ok.
 send_request(Streams, Headers, Body, CallbackMod, CallbackOpts) ->
-    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, [], self()}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, [], self()}, infinity).
 
 -spec send_ping(chatterbox_h2_stream_set:stream_set()) -> ok.
 send_ping(Streams) ->
@@ -370,7 +370,7 @@ is_push(Streams) ->
     end.
 
 new_stream(Streams, Headers, Body) ->
-    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, undefined, [], Headers, Body, [], self()}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, undefined, [], Headers, Body, [], self()}, infinity).
 
 %% @doc `new_stream/6' accepts Headers so they can be sent within the connection process
 %% when a stream id is assigned. This ensures that another process couldn't also have
@@ -378,15 +378,15 @@ new_stream(Streams, Headers, Body) ->
 %% results in the server closing the connection when it gets headers for the lower id stream.
 -spec new_stream(chatterbox_h2_stream_set:stream_set(), module(), term(), hpack:headers(), send_opts(), pid()) -> {stream_id(), pid()} | {error, error_code()}.
 new_stream(Streams, CallbackMod, CallbackOpts, Headers, Opts, NotifyPid) ->
-    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Opts, NotifyPid}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Opts, NotifyPid}, infinity).
 
 -spec new_stream(chatterbox_h2_stream_set:stream_set(), module(), term(), hpack:headers(), any(), send_opts(), pid()) -> {stream_id(), pid()} | {error, error_code()}.
 new_stream(Streams, CallbackMod, CallbackOpts, Headers, Body, Opts, NotifyPid) ->
-    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, Opts, NotifyPid}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {new_stream, CallbackMod, CallbackOpts, Headers, Body, Opts, NotifyPid}, infinity).
 
 -spec send_promise(chatterbox_h2_stream_set:stream_set(), stream_id(), hpack:headers()) -> {stream_id(), pid()} | {error, error_code()}.
 send_promise(Streams, StreamId, Headers) ->
-    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {send_promise, StreamId, Headers, self()}).
+    gen_server:call(chatterbox_h2_stream_set:connection(Streams), {send_promise, StreamId, Headers, self()}, infinity).
 
 -spec get_response(chatterbox_h2_stream_set:stream_set(), stream_id()) ->
                           {ok, {hpack:headers(), iodata(), iodata()}}
@@ -489,11 +489,18 @@ connected(info, send_all_we_can, State=#connection{send_all_we_can_timer=undefin
 connected(info, actually_send_all_we_can, State) ->
     %% time to do the thing, but do it in a spawn so we don't block
     %% the connection
-    {_, Ref} = spawn_monitor(fun() ->
+    {_, Ref} = proc_lib:spawn_opt(fun() ->
                           chatterbox_h2_stream_set:send_all_we_can(State#connection.streams)
-                  end),
+                 end,
+                 [monitor]),
     {keep_state, State#connection{send_all_we_can_timer=Ref}};
-connected(info, {'DOWN', Ref, process, _, _}, State=#connection{send_all_we_can_timer=Ref}) ->
+connected(info, {'DOWN', Ref, process, _, Reason}, State=#connection{send_all_we_can_timer=Ref}) ->
+    case Reason of
+        normal -> ok;
+        shutdown -> ok;
+        {shutdown, _} -> ok;
+        _ -> error({send_all_we_can_crashed, Reason})
+    end,
     %% its done, decide if we need to schedule another one
     case State#connection.missed_send_all_we_can of
         true ->
@@ -1253,7 +1260,7 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                             %% Make window size great again if we've used up half our buffer
                                             #settings{
                                                   initial_window_size=IWS
-                                                 } = chatterbox_h2_stream_set:get_peer_settings(Streams),
+                                                 } = chatterbox_h2_stream_set:get_self_settings(Streams),
                                             case {chatterbox_h2_stream_set:decrement_socket_recv_window(L, Streams), IWS div 2} of
                                                 {Rem, Half} when Rem < Half ->
                                                     %% refill the window
@@ -1280,8 +1287,13 @@ receive_data(Socket, Streams, Connection, Flow, Type, First, Decoder) ->
                                                                             Streams)
                                     end,
                                     receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
-                                StreamType ->
-                                    go_away_(?PROTOCOL_ERROR, list_to_binary(io_lib:format("data on ~p stream ~p", [StreamType, Header#frame_header.stream_id])), Socket, Streams),
+                                closed ->
+                                    %% As per RFC-9113 a peer MAY send GO_AWAY when receiving data on a closed stream,
+                                    %% or ignore it. It MUST ignore received data frames for a while after sending RST_STREAM.
+                                    %% The easiest way of doing this is to never send GO_AWAY in this case.
+                                    receive_data(Socket, Streams, Connection, Flow, Type, false, Decoder);
+                                idle ->
+                                    go_away_(?PROTOCOL_ERROR, list_to_binary(io_lib:format("data on idle stream ~p", [Header#frame_header.stream_id])), Socket, Streams),
                                     Connection ! {go_away, ?PROTOCOL_ERROR}
                             end
                     end;

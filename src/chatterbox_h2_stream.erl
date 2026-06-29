@@ -3,8 +3,8 @@
 
 %% Public API
 -export([
-         start_link/5,
-         start/5,
+         start_link/6,
+         start/6,
          send_event/2,
          send_pp/2,
          send_data/2,
@@ -49,6 +49,7 @@
           stream_id = undefined :: stream_id(),
           streams :: chatterbox_h2_stream_set:stream_set(),
           connection = undefined :: undefined | pid(),
+          notify_pid :: pid(),
           socket = undefined :: chatterbox_sock:socket(),
           state = idle :: stream_state_name(),
           incoming_frames = queue:new() :: queue:queue(chatterbox_h2_frame:frame()),
@@ -113,15 +114,17 @@
         StreamId :: stream_id(),
         Streams :: chatterbox_h2_stream_set:stream_set(),
         Connection :: pid(),
+        NotifyPid :: pid(),
         CallbackModule :: module(),
         CallbackOptions :: list()
                   ) ->
                         {ok, pid()} | ignore | {error, term()}.
-start_link(StreamId, Streams, Connection, CallbackModule, CallbackOptions) ->
+start_link(StreamId, Streams, Connection, NotifyPid, CallbackModule, CallbackOptions) ->
     gen_statem:start_link(?MODULE,
                           [StreamId,
                            Streams,
                            Connection,
+                           NotifyPid,
                            CallbackModule,
                            CallbackOptions],
                           [{hibernate_after, 10000}]).
@@ -131,16 +134,18 @@ start_link(StreamId, Streams, Connection, CallbackModule, CallbackOptions) ->
         StreamId :: stream_id(),
         Streams :: chatterbox_h2_stream_set:stream_set(),
         Connection :: pid(),
+        NotifyPid :: pid(),
         CallbackModule :: module(),
         CallbackOptions :: list()
                   ) ->
                         {ok, pid()} | ignore | {error, term()}.
-start(StreamId, Streams, Connection, CallbackModule, CallbackOptions) ->
+start(StreamId, Streams, Connection, NotifyPid, CallbackModule, CallbackOptions) ->
     gen_statem:start(?MODULE,
                           [link_connection,
                            StreamId,
                            Streams,
                            Connection,
+                           NotifyPid,
                            CallbackModule,
                            CallbackOptions],
                           [{hibernate_after, 10000}]).
@@ -193,15 +198,18 @@ init([
       StreamId,
       Streams,
       ConnectionPid,
+      NotifyPid,
       CB=undefined,
       _CBOptions
      ]) ->
+    monitor_notify_pid(NotifyPid),
     erlang:monitor(process, ConnectionPid),
     {ok, idle, #stream_state{
                   callback_mod=CB,
                   stream_id=StreamId,
                   streams=Streams,
                   connection=ConnectionPid,
+                  notify_pid=NotifyPid,
                   socket=chatterbox_h2_stream_set:socket(Streams),
                   type=chatterbox_h2_stream_set:stream_set_type(Streams)
                  }};
@@ -209,9 +217,11 @@ init([
       StreamId,
       Streams,
       ConnectionPid,
+      NotifyPid,
       CB,
       CBOptions
      ]) ->
+    monitor_notify_pid(NotifyPid),
     erlang:monitor(process, ConnectionPid),
     %% don't block stream init with a slow callback init
     {ok, idle, #stream_state{
@@ -219,6 +229,7 @@ init([
                   stream_id=StreamId,
                   streams=Streams,
                   connection=ConnectionPid,
+                  notify_pid=NotifyPid,
                   socket=chatterbox_h2_stream_set:socket(Streams),
                   type=chatterbox_h2_stream_set:stream_set_type(Streams)
                  }, [{next_event, info, {init_callback, CBOptions}}]};
@@ -227,6 +238,7 @@ init([
       _StreamId,
       _Streams,
       ConnectionPid,
+      _NotifyPid,
       _CB,
       _CBOptions
      ]=Args) ->
@@ -752,13 +764,12 @@ half_closed_local(Type, Event, State) ->
     handle_event(Type, Event, State).
 
 closed(timeout, _,
-       #stream_state{stream_id=StreamId, streams=Streams}=StreamState) ->
+       #stream_state{stream_id=StreamId, streams=Streams, notify_pid=NotifyPid}=StreamState) ->
     try 
         Stream = chatterbox_h2_stream_set:get(StreamId, Streams),
         Type = chatterbox_h2_stream_set:stream_set_type(Streams),
         case chatterbox_h2_stream_set:type(Stream) of
             active ->
-                NotifyPid = chatterbox_h2_stream_set:notify_pid(Stream),
                 GarbageOnEnd = chatterbox_h2_stream_set:get_garbage_on_end(Streams),
                 Response =
                     case {Type, GarbageOnEnd} of
@@ -792,6 +803,8 @@ closed(cast,
   #stream_state{connection=_Pid,
                 stream_id=_StreamId}=Stream) ->
    {keep_state,Stream#stream_state{response_trailers=Headers}, 0};
+closed(info, {'DOWN', _Ref, process, Pid, _Reason}, #stream_state{notify_pid=Pid}) ->
+    keep_state_and_data;
 closed(_T, _E,
        #stream_state{}=Stream) ->
     rst_stream_(?STREAM_CLOSED, Stream);
@@ -836,6 +849,8 @@ handle_event(cast, {rst_stream, ErrorCode}, State=#stream_state{}) ->
     rst_stream_(ErrorCode, State);
 handle_event(info, {'DOWN', _Ref, process, Pid, Reason}, #stream_state{connection=Pid}) ->
     {stop, Reason};
+handle_event(info, {'DOWN', _Ref, process, Pid, _Reason}, #stream_state{notify_pid=Pid}=StreamState) ->
+    rst_stream_(?CANCEL, StreamState);
 handle_event(cast, Event, State=#stream_state{callback_mod=CB,
                                               callback_state=CallbackState}) when CB /= undefined ->
     CallbackState1 = CB:handle_info(Event, CallbackState),
@@ -978,3 +993,11 @@ validate_pseudos(_, DoneWithPseudos, _Found) ->
       DoneWithPseudos)
         andalso
         no_upper_names(DoneWithPseudos).
+
+monitor_notify_pid(undefined) ->
+    undefined;
+monitor_notify_pid(NotifyPid) when is_pid(NotifyPid) ->
+    case application:get_env(chatterbox, cancel_stream_on_down, false) of
+        true -> erlang:monitor(process, NotifyPid);
+        false -> undefined
+    end.
