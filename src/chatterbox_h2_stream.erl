@@ -10,8 +10,10 @@
          send_data/2,
          send_trailers/2,
          stream_id/0,
+         stream_id/1,
          call/2,
          connection/0,
+         connection/1,
          send_window_update/1,
          send_connection_window_update/1,
          rst_stream/2,
@@ -165,14 +167,28 @@ send_trailers(Pid, Trailers) ->
 
 -spec stream_id() -> stream_id().
 stream_id() ->
-    gen_statem:call(self(), stream_id).
+    case get(h2_stream_id) of
+        undefined -> error(not_a_stream_process);
+        StreamId -> StreamId
+    end.
+
+-spec stream_id(pid()) -> stream_id().
+stream_id(Pid) ->
+    gen_statem:call(Pid, stream_id).
 
 call(Pid, Msg) ->
     gen_statem:call(Pid, Msg).
 
 -spec connection() -> pid().
 connection() ->
-    gen_statem:call(self(), connection).
+    case get(h2_stream_connection) of
+        undefined -> error(not_a_stream_process);
+        Connection -> Connection
+    end.
+
+-spec connection(pid()) -> pid().
+connection(Pid) ->
+    gen_statem:call(Pid, connection).
 
 -spec send_window_update(non_neg_integer()) -> ok.
 send_window_update(Size) ->
@@ -180,7 +196,7 @@ send_window_update(Size) ->
 
 -spec send_connection_window_update(non_neg_integer()) -> ok.
 send_connection_window_update(Size) ->
-    gen_statem:cast(self(), {send_connection_window_update, Size}).
+    chatterbox_h2_connection:send_window_update(connection(), Size).
 
 rst_stream(Pid, Code) ->
     gen_statem:cast(Pid, {rst_stream, Code}).
@@ -196,6 +212,8 @@ init([
       CB=undefined,
       _CBOptions
      ]) ->
+    put(h2_stream_id, StreamId),
+    put(h2_stream_connection, ConnectionPid),
     erlang:monitor(process, ConnectionPid),
     {ok, idle, #stream_state{
                   callback_mod=CB,
@@ -212,6 +230,8 @@ init([
       CB,
       CBOptions
      ]) ->
+    put(h2_stream_id, StreamId),
+    put(h2_stream_connection, ConnectionPid),
     erlang:monitor(process, ConnectionPid),
     %% don't block stream init with a slow callback init
     {ok, idle, #stream_state{
@@ -631,6 +651,11 @@ half_closed_remote(cast,
 
 half_closed_remote(_Type, {send_trailers, Trailers}, State) ->
     send_trailers(half_closed_remote, Trailers, State);
+half_closed_remote(cast, {Tag, _}=Event, State)
+  when Tag =:= rst_stream;
+       Tag =:= send_window_update;
+       Tag =:= send_connection_window_update ->
+    handle_event(cast, Event, State);
 half_closed_remote(cast, _E,
        #stream_state{}=Stream) ->
     rst_stream_(?STREAM_CLOSED, Stream);
@@ -745,6 +770,15 @@ half_closed_local(cast, recv_es,
 half_closed_local(cast, {send_t, _Trailers},
                   #stream_state{}) ->
     keep_state_and_data;
+half_closed_local({call, _}=Type, Event, State) ->
+    handle_event(Type, Event, State);
+half_closed_local(info, Event, State) ->
+    handle_event(info, Event, State);
+half_closed_local(cast, {Tag, _}=Event, State)
+  when Tag =:= rst_stream;
+       Tag =:= send_window_update;
+       Tag =:= send_connection_window_update ->
+    handle_event(cast, Event, State);
 half_closed_local(_T, _E,
        #stream_state{}=Stream) ->
     rst_stream_(?STREAM_CLOSED, Stream);
@@ -792,11 +826,28 @@ closed(cast,
   #stream_state{connection=_Pid,
                 stream_id=_StreamId}=Stream) ->
    {keep_state,Stream#stream_state{response_trailers=Headers}, 0};
+closed({call, _}=Type, Event, State) ->
+    keep_closing(handle_event(Type, Event, State));
+closed(info, Event, State) ->
+    keep_closing(handle_event(info, Event, State));
+closed(cast, {send_connection_window_update, _}=Event, State) ->
+    keep_closing(handle_event(cast, Event, State));
+closed(cast, {Tag, _}, _State)
+  when Tag =:= rst_stream;
+       Tag =:= send_window_update ->
+    {keep_state_and_data, [{timeout, 0, undefined}]};
 closed(_T, _E,
        #stream_state{}=Stream) ->
     rst_stream_(?STREAM_CLOSED, Stream);
 closed(Type, Event, State) ->
     handle_event(Type, Event, State).
+
+keep_closing({keep_state, State}) ->
+    {keep_state, State, [{timeout, 0, undefined}]};
+keep_closing({keep_state, State, Actions}) ->
+    {keep_state, State, [{timeout, 0, undefined} | Actions]};
+keep_closing(Other) ->
+    Other.
 
 send_trailers(State, Trailers, Stream=#stream_state{streams=Streams,
                                                     stream_id=StreamId}) ->
